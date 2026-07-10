@@ -1,0 +1,5 @@
+A production-grade, multi-agent AI system that ingests market signals
+ in real time, retrieves relevant context from a live knowledge base
+using Retrieval-Augmented Generation (RAG), and produces structured
+investment decision artifacts — all through an orchestrated agentic
+pipeline built with LangChain and LangGraph.
