@@ -30,6 +30,8 @@ from typing import Any, Dict, List, Literal, Optional
 from pydantic import BaseModel, Field
 from typing_extensions import Annotated, TypedDict
 
+from config import DEFAULT_ALERT_THRESHOLD
+
 
 # Enums — closed vocabularies pulled straight from the problem statement
 
@@ -246,7 +248,7 @@ class FinAgentState(TypedDict, total=False):
     errors: Annotated[List[str], operator.add]
 
 
-def create_initial_state(alert_threshold: int = 70) -> FinAgentState:
+def create_initial_state(alert_threshold: int = DEFAULT_ALERT_THRESHOLD) -> FinAgentState:
     """Factory for a clean starting state — use this at the top of a pipeline run."""
     return FinAgentState(
         raw_signal=None,
