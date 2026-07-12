@@ -1,3 +1,8 @@
 typing-extensions
 pydantic
 langgraph
+langchain-core
+langchain-community
+langchain-text-splitters
+pdfplumber
+langchain-openai
