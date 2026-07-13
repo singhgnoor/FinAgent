@@ -6,3 +6,6 @@ langchain-community
 langchain-text-splitters
 pdfplumber
 langchain-openai
+faiss-cpu
+rank_bm25
+langchain-huggingface

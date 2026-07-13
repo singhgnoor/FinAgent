@@ -22,6 +22,7 @@ from core.state import (
 )
 
 from config import TOP_K_DEFAULT
+from rag.vector_store import get_vector_store
 
 
 def _build_query(state: FinAgentState) -> str:
@@ -31,20 +32,10 @@ def _build_query(state: FinAgentState) -> str:
     return f"Relevant context for: {event.normalized_text}"
 
 
-def _fake_similarity_search(query: str, top_k: int = TOP_K_DEFAULT) -> List[RetrievedPassage]:
-    """STUB: pretend vector search. Replace with rag/vector_store.py call."""
-    now = datetime.now(timezone.utc)
-    return [
-        RetrievedPassage(
-            passage_id=str(uuid.uuid4()),
-            text=f"[stub passage {i + 1}] Sample retrieved context for query: '{query}'",
-            source_document="sample_document.pdf",
-            section_reference=f"p.{i + 1}",
-            similarity_score=round(0.9 - i * 0.1, 2),
-            retrieved_at=now,
-        )
-        for i in range(top_k)
-    ]
+def _vector_search(query: str, top_k: int = TOP_K_DEFAULT) -> List[RetrievedPassage]:
+    """Real hybrid RAG search via rag/vector_store.py."""
+    store = get_vector_store()
+    return store.retrieve(query, top_k=top_k)
 
 
 def retrieval_node(state: FinAgentState) -> dict:
@@ -60,14 +51,27 @@ def retrieval_node(state: FinAgentState) -> dict:
         )
         return {"trace_log": [trace]}
 
-    passages = _fake_similarity_search(query)
+    try:
+        passages = _vector_search(query)
+    except Exception as e:
+        trace = new_trace_event(
+            agent=AgentName.RETRIEVAL,
+            action="similarity_search",
+            tool_calls=["vector_store.retrieve"],
+            input_summary=query,
+            output_summary="retrieval failed",
+            status="error",
+            error_message=str(e),
+        )
+        return {"trace_log": [trace], "errors": [f"retrieval_agent: {e}"]}
 
     trace = new_trace_event(
         agent=AgentName.RETRIEVAL,
         action="similarity_search",
-        tool_calls=["vector_store.similarity_search (stub)"],
+        tool_calls=["vector_store.retrieve"],
         input_summary=query,
         output_summary=f"{len(passages)} passages retrieved",
+        status="ok" if passages else "fallback",
     )
 
     return {
