@@ -176,10 +176,10 @@ class DecisionArtefact(BaseModel):
     confidence_level: ConfidenceLevel
     evidence_bullets: List[str]                 # 2-3 bullets, per spec
     risk_flags: List[str]                       # contradictory signals / data gaps
+    llm_commentary: Optional[str] = None        # NEW — advisory note, separate from deterministic fields
     created_at: datetime
     alert_triggered: bool
     source_hypothesis_id: Optional[str] = None  # links back to Hypothesis.hypothesis_id
-
 
 # 5.4 Observability — required trace log
 
