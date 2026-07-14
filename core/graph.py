@@ -30,6 +30,8 @@ graph" constraint, what makes this file, not the agent files, the single
 source of truth for how data flows.
 """
 
+import time
+
 from langgraph.graph import END, START, StateGraph
 
 from agents.analysis import analysis_node
@@ -37,6 +39,9 @@ from agents.decision import decision_node
 from agents.ingestion import ingestion_node
 from agents.retrieval import retrieval_node
 from core.state import FinAgentState, RawSignal, create_initial_state
+from core.log import get_logger
+
+logger = get_logger(__name__)
 
 # Below this score a hypothesis is treated as noise — not worth turning
 # into a decision artefact at all. This is a *different* knob from
@@ -56,7 +61,9 @@ def route_after_ingestion(state: FinAgentState) -> str:
     propagating silently into every downstream node.
     """
     if state.get("normalized_event") is None:
+        logger.info("[routing] after_ingestion -> INVALID_EVENT branch: no normalized_event produced")
         return "invalid_event"
+    logger.info("[routing] after_ingestion -> VALID_EVENT branch: normalized_event exists")
     return "valid_event"
 
 
@@ -68,9 +75,18 @@ def route_after_analysis(state: FinAgentState) -> str:
     """
     hypothesis = state.get("hypothesis")
     if hypothesis is None:
+        logger.info("[routing] after_analysis -> NO_HYPOTHESIS branch")
         return "no_hypothesis"
     if hypothesis.confidence_score < MIN_HYPOTHESIS_CONFIDENCE:
+        logger.info(
+            f"[routing] after_analysis -> LOW_CONFIDENCE branch: "
+            f"score={hypothesis.confidence_score} < threshold={MIN_HYPOTHESIS_CONFIDENCE}"
+        )
         return "low_confidence"
+    logger.info(
+        f"[routing] after_analysis -> ACTIONABLE branch: "
+        f"score={hypothesis.confidence_score} >= {MIN_HYPOTHESIS_CONFIDENCE}"
+    )
     return "actionable"
 
 
@@ -78,6 +94,7 @@ def route_after_analysis(state: FinAgentState) -> str:
 
 def build_graph():
     """Build and compile the FinAgent StateGraph. Call once, reuse the result."""
+    logger.info("[graph] Building FinAgent StateGraph...")
     graph = StateGraph(FinAgentState)
 
     graph.add_node("ingestion", ingestion_node)
@@ -113,6 +130,7 @@ def build_graph():
 
     graph.add_edge("decision", END)
 
+    logger.info("[graph] StateGraph compiled successfully")
     return graph.compile()
 
 
@@ -136,7 +154,24 @@ def run_once(raw_signal: RawSignal, alert_threshold: int = 70) -> FinAgentState:
     the final state (normalized_event, retrieved_passages, hypothesis,
     artifact, trace_log — whichever got populated before an END branch).
     """
+    start_time = time.perf_counter()
+    logger.info(
+        f"[graph] run_once starting: signal_type={raw_signal.signal_type.value}, "
+        f"source={raw_signal.source}, alert_threshold={alert_threshold}"
+    )
+    
     compiled = get_compiled_graph()
     initial_state = create_initial_state(alert_threshold=alert_threshold)
     initial_state["raw_signal"] = raw_signal
-    return compiled.invoke(initial_state)
+    
+    result = compiled.invoke(initial_state)
+    
+    elapsed = time.perf_counter() - start_time
+    logger.info(
+        f"[graph] run_once completed in {elapsed:.2f}s: "
+        f"has_event={result.get('normalized_event') is not None}, "
+        f"has_hypothesis={result.get('hypothesis') is not None}, "
+        f"has_artefact={result.get('artefact') is not None}"
+    )
+    
+    return result

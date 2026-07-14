@@ -7,6 +7,7 @@ Single source of truth for tunable constants used across the pipeline.
 
 from pathlib import Path
 import os
+import logging
 
 # DEBUG -
 VERBOSE = True
@@ -16,6 +17,10 @@ VERBOSE = True
 BASE_DIR = Path(__file__).resolve().parent
 
 DATA_DIR = BASE_DIR / "data"
+LOG_DIR = BASE_DIR / "logs"
+
+# Logging
+LOG_LEVEL = logging.DEBUG if VERBOSE else logging.INFO
 
 ## LLM Backbone — OpenAI, declared per PS 3.1
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY")

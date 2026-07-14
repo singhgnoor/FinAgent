@@ -11,6 +11,7 @@ multiple hypotheses for the same asset over time).
 """
 
 import uuid
+import time
 from datetime import datetime, timezone
 from typing import List, Optional, Tuple
 
@@ -18,6 +19,7 @@ from langchain_core.prompts import ChatPromptTemplate
 from pydantic import BaseModel, Field
 
 from core.llm import get_llm
+from core.log import get_logger
 from core.state import (
     Action,
     AgentName,
@@ -27,6 +29,8 @@ from core.state import (
     confidence_to_level,
     new_trace_event,
 )
+
+logger = get_logger(__name__)
 
 class _DecisionAdvice(BaseModel):
     """Structured LLM output — advisory only, never decides action/confidence."""
@@ -59,18 +63,42 @@ _ADVICE_PROMPT = ChatPromptTemplate.from_messages([
 
 
 def _get_llm_advice(hypothesis) -> _DecisionAdvice:
+    logger.info(
+        f"[decision.llm] Calling LLM risk advisory: model=gpt-5.4-mini, "
+        f"asset={hypothesis.asset}, classification={hypothesis.classification.value}, "
+        f"confidence={hypothesis.confidence_score}"
+    )
+    logger.debug(f"[decision.llm] Hypothesis statement: {hypothesis.statement[:150]}")
+    
+    llm_start = time.perf_counter()
     structured_llm = get_llm().with_structured_output(_DecisionAdvice)
     evidence_text = "\n".join(f"- {e}" for e in hypothesis.supporting_evidence) or "- none"
     chain = _ADVICE_PROMPT | structured_llm
-    return chain.invoke({
-        "asset": hypothesis.asset,
-        "classification": hypothesis.classification.value,
-        "rationale": hypothesis.rationale,
-        "statement": hypothesis.statement,
-        "time_horizon": hypothesis.time_horizon.value,
-        "confidence_score": hypothesis.confidence_score,
-        "evidence": evidence_text,
-    })
+    
+    try:
+        result = chain.invoke({
+            "asset": hypothesis.asset,
+            "classification": hypothesis.classification.value,
+            "rationale": hypothesis.rationale,
+            "statement": hypothesis.statement,
+            "time_horizon": hypothesis.time_horizon.value,
+            "confidence_score": hypothesis.confidence_score,
+            "evidence": evidence_text,
+        })
+        
+        elapsed = time.perf_counter() - llm_start
+        logger.info(
+            f"[decision.llm] LLM advisory completed in {elapsed:.2f}s: "
+            f"risk_flags={len(result.risk_flags)}, "
+            f"commentary_preview={result.commentary[:100]}"
+        )
+        logger.debug(f"[decision.llm] Risk flags: {result.risk_flags}")
+        logger.debug(f"[decision.llm] Commentary: {result.commentary}")
+        
+        return result
+    except Exception as e:
+        logger.exception(f"[decision.llm] LLM advisory call failed: {type(e).__name__}: {str(e)}")
+        raise
 
 
 def _get_llm_advice_safe(hypothesis) -> Tuple[Optional[_DecisionAdvice], str, Optional[str]]:
@@ -120,18 +148,48 @@ def _synthesize_artefact(state: FinAgentState, advice: Optional[_DecisionAdvice]
 
 def decision_node(state: FinAgentState) -> dict:
     """LangGraph node entrypoint. Produces the final DecisionArtefact."""
+    node_start = time.perf_counter()
     hypothesis = state.get("hypothesis")
 
+    logger.info("[decision] Node entry: checking for hypothesis")
+
     if hypothesis is None:
+        logger.warning("[decision] Skipping: no hypothesis in state")
         trace = new_trace_event(
             agent=AgentName.DECISION,
             action="skip_no_hypothesis",
             output_summary="no-op, no hypothesis in state",
             status="fallback",
         )
+        logger.debug(f"[decision] Trace event: {trace.model_dump_json()}")
         return {"trace_log": [trace]}
 
+    logger.info(
+        f"[decision] Hypothesis details: asset={hypothesis.asset}, "
+        f"classification={hypothesis.classification.value}, "
+        f"confidence={hypothesis.confidence_score}"
+    )
+
     advice, advice_status, advice_error = _get_llm_advice_safe(hypothesis)
+    
+    # Log deterministic rule result
+    deterministic_action = _action_from_classification(hypothesis.classification)
+    logger.info(
+        f"[decision] Deterministic rule: classification={hypothesis.classification.value} "
+        f"-> action={deterministic_action.value}"
+    )
+    
+    # Log LLM advisory result
+    if advice:
+        logger.info(
+            f"[decision] LLM advisory status: ok, "
+            f"risk_flags={len(advice.risk_flags)}"
+        )
+    else:
+        logger.warning(
+            f"[decision] LLM advisory status: fallback - {advice_error}"
+        )
+    
     artefact = _synthesize_artefact(state, advice)
 
     trace = new_trace_event(
@@ -145,7 +203,30 @@ def decision_node(state: FinAgentState) -> dict:
         error_message=advice_error,
     )
 
+    # Log the final DecisionArtefact
+    logger.info(
+        f"[decision] FINAL DECISION ARTEFACT: asset={artefact.asset}, "
+        f"action={artefact.action.value}, confidence={artefact.confidence_score}, "
+        f"confidence_level={artefact.confidence_level.value}, "
+        f"alert_triggered={artefact.alert_triggered}"
+    )
+    logger.debug(
+        f"[decision] Artefact details: id={artefact.artefact_id}, "
+        f"evidence_bullets={artefact.evidence_bullets}, "
+        f"risk_flags={artefact.risk_flags}"
+    )
+    if artefact.llm_commentary:
+        logger.debug(f"[decision] LLM commentary: {artefact.llm_commentary}")
+    
+    elapsed = time.perf_counter() - node_start
+    logger.info(f"[decision] Node exit: elapsed={elapsed:.3f}s")
+    logger.debug(f"[decision] Trace event: {trace.model_dump_json()}")
+
     if artefact.alert_triggered:
+        logger.warning(
+            f"[ALERT] {artefact.asset} -> {artefact.action.value} "
+            f"(confidence {artefact.confidence_score}, {artefact.confidence_level.value})"
+        )
         print(
             f"ALERT: {artefact.asset} -> {artefact.action.value} "
             f"(confidence {artefact.confidence_score}, {artefact.confidence_level.value})"

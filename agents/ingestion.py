@@ -12,6 +12,7 @@ NormalizedEvent so the rest of the pipeline can be wired and tested.
 """
 
 import uuid
+import time
 from datetime import datetime, timezone
 
 from core.state import (
@@ -25,6 +26,9 @@ from core.state import (
     TextData,
     new_trace_event,
 )
+from core.log import get_logger
+
+logger = get_logger(__name__)
 
 
 def _normalize_raw_signal(raw: RawSignal) -> NormalizedEvent:
@@ -83,18 +87,24 @@ def ingestion_node(state: FinAgentState) -> dict:
     LangGraph node entrypoint. Reads `raw_signal` from state, produces
     `normalized_event`, and appends one trace event.
     """
+    node_start = time.perf_counter()
     raw_signal = state.get("raw_signal")
 
+    logger.info("[ingestion] Node entry: raw_signal present" if raw_signal else "[ingestion] Node entry: NO raw_signal")
+
     if raw_signal is None:
+        logger.warning("[ingestion] Skipping: no raw_signal in state")
         trace = new_trace_event(
             agent=AgentName.INGESTION,
             action="skip_no_raw_signal",
             output_summary="no-op, no raw_signal in state",
             status="fallback",
         )
+        logger.debug(f"[ingestion] Trace event: {trace.model_dump_json()}")
         return {"trace_log": [trace]}
 
     normalized_event = _normalize_raw_signal(raw_signal)
+    logger.debug(f"[ingestion] Normalized raw_signal (type={raw_signal.signal_type.value}) -> event_id={normalized_event.event_id}")
 
     trace = new_trace_event(
         agent=AgentName.INGESTION,
@@ -102,6 +112,13 @@ def ingestion_node(state: FinAgentState) -> dict:
         input_summary=f"raw_signal type={raw_signal.signal_type.value}",
         output_summary=f"normalized_event id={normalized_event.event_id}",
     )
+    
+    elapsed = time.perf_counter() - node_start
+    logger.info(
+        f"[ingestion] Node exit: normalized_event_id={normalized_event.event_id}, "
+        f"asset={normalized_event.asset}, elapsed={elapsed:.3f}s"
+    )
+    logger.debug(f"[ingestion] Trace event: {trace.model_dump_json()}")
 
     return {
         "normalized_event": normalized_event,

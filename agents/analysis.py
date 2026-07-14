@@ -41,12 +41,14 @@ different job:
 """
 
 import uuid
+import time
 from datetime import datetime, timezone
 from typing import List, Optional, Tuple
 from langchain_core.prompts import ChatPromptTemplate
 from pydantic import BaseModel, Field
 
 from core.llm import get_llm
+from core.log import get_logger
 from core.state import (
     AgentName,
     Classification,
@@ -57,6 +59,8 @@ from core.state import (
     TimeHorizon,
     new_trace_event,
 )
+
+logger = get_logger(__name__)
 
 
 # Structured LLM output - judgment fields only. hypothesis_id,
@@ -129,14 +133,39 @@ def _build_passages_block(passages: List[RetrievedPassage]) -> str:
 def _get_llm_analysis(
     event: NormalizedEvent, passages: List[RetrievedPassage]
 ) -> _AnalysisOutput:
+    logger.info(
+        f"[analysis.llm] Calling LLM classification: model=gpt-5.4-mini, "
+        f"asset={event.asset}, event_type={event.event_type.value}, "
+        f"num_passages={len(passages)}"
+    )
+    logger.debug(f"[analysis.llm] Event text preview: {event.normalized_text[:150]}")
+    
+    llm_start = time.perf_counter()
     structured_llm = get_llm().with_structured_output(_AnalysisOutput)
     chain = _ANALYSIS_PROMPT | structured_llm
-    return chain.invoke({
-        "asset": event.asset or "UNKNOWN",
-        "event_type": event.event_type.value,
-        "normalized_text": event.normalized_text,
-        "passages_block": _build_passages_block(passages),
-    })
+    
+    try:
+        result = chain.invoke({
+            "asset": event.asset or "UNKNOWN",
+            "event_type": event.event_type.value,
+            "normalized_text": event.normalized_text,
+            "passages_block": _build_passages_block(passages),
+        })
+        
+        elapsed = time.perf_counter() - llm_start
+        logger.info(
+            f"[analysis.llm] LLM classification completed in {elapsed:.2f}s: "
+            f"classification={result.classification.value}, "
+            f"confidence={result.confidence_score}, "
+            f"time_horizon={result.time_horizon.value}"
+        )
+        logger.debug(f"[analysis.llm] LLM rationale: {result.rationale[:150]}")
+        logger.debug(f"[analysis.llm] LLM statement: {result.statement[:150]}")
+        
+        return result
+    except Exception as e:
+        logger.exception(f"[analysis.llm] LLM call failed: {type(e).__name__}: {str(e)}")
+        raise
 
 
 def _get_analysis_safe(
@@ -190,37 +219,41 @@ def _blend_confidence(llm_score: int, adjustment: int) -> int:
 
 def analysis_node(state: FinAgentState) -> dict:
     """LangGraph node entrypoint. Produces a Hypothesis from state, or skips."""
+    node_start = time.perf_counter()
     event = state.get("normalized_event")
+    
+    logger.info("[analysis] Node entry: checking for normalized_event and passages")
 
     if event is None:
+        logger.warning("[analysis] Skipping: no normalized_event in state")
         trace = new_trace_event(
             agent=AgentName.ANALYSIS,
             action="skip_no_event",
             output_summary="no-op, no normalized_event in state",
             status="fallback",
         )
+        logger.debug(f"[analysis] Trace event: {trace.model_dump_json()}")
         return {"trace_log": [trace]}
 
     passages = state.get("retrieved_passages", [])
+    logger.info(f"[analysis] Passages available: {len(passages)}")
 
     if not passages:
-        # PS 2.3 requires grounding before finalizing a hypothesis - with
-        # nothing retrieved there is nothing to ground on, so this node
-        # doesn't call the LLM at all. route_after_analysis sends this to
-        # the no_hypothesis END branch, same as the LLM-failure path below.
+        logger.warning("[analysis] Skipping: no retrieved passages (cannot ground hypothesis)")
         trace = new_trace_event(
             agent=AgentName.ANALYSIS,
             action="skip_no_grounding",
             input_summary=event.normalized_text[:80],
-            output_summary="no-op, retrieved_passages is empty - "
-                            "cannot ground a hypothesis",
+            output_summary="no-op, retrieved_passages is empty - cannot ground a hypothesis",
             status="fallback",
         )
+        logger.debug(f"[analysis] Trace event: {trace.model_dump_json()}")
         return {"trace_log": [trace]}
 
     output, status, error = _get_analysis_safe(event, passages)
 
     if output is None:
+        logger.error(f"[analysis] LLM classification failed: {error}")
         trace = new_trace_event(
             agent=AgentName.ANALYSIS,
             action="classify_and_generate_hypothesis",
@@ -230,6 +263,7 @@ def analysis_node(state: FinAgentState) -> dict:
             status="error",
             error_message=error,
         )
+        logger.debug(f"[analysis] Trace event (error): {trace.model_dump_json()}")
         return {
             "trace_log": [trace],
             "errors": [f"analysis_agent: llm classification failed - {error}"],
@@ -237,6 +271,10 @@ def analysis_node(state: FinAgentState) -> dict:
 
     adjustment = _evidence_strength_adjustment(passages)
     final_confidence = _blend_confidence(output.confidence_score, adjustment)
+    logger.debug(
+        f"[analysis] Confidence adjustment: llm_score={output.confidence_score}, "
+        f"adjustment={adjustment:+d}, final={final_confidence}"
+    )
 
     hypothesis = Hypothesis(
         hypothesis_id=str(uuid.uuid4()),
@@ -266,5 +304,13 @@ def analysis_node(state: FinAgentState) -> dict:
         ),
         status="ok",
     )
+    
+    elapsed = time.perf_counter() - node_start
+    logger.info(
+        f"[analysis] Node exit: hypothesis_id={hypothesis.hypothesis_id}, "
+        f"classification={hypothesis.classification.value}, "
+        f"confidence={final_confidence}, elapsed={elapsed:.3f}s"
+    )
+    logger.debug(f"[analysis] Trace event: {trace.model_dump_json()}")
 
     return {"hypothesis": hypothesis, "trace_log": [trace]}

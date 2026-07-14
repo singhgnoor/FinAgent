@@ -33,6 +33,7 @@ tooling" requirement, rather than hand-rolled retrieval clients.
 import os
 import pickle
 import uuid
+import time
 from datetime import datetime, timezone
 from typing import List, Optional, Tuple
 
@@ -43,6 +44,9 @@ from langchain_core.documents import Document
 
 import config
 from core.state import RetrievedPassage
+from core.log import get_logger
+
+logger = get_logger(__name__)
 
 try:
     from langchain_community.cross_encoders import HuggingFaceCrossEncoder
@@ -59,6 +63,10 @@ class FinAgentVectorStore:
     """
 
     def __init__(self):
+        logger.info(
+            f"[vector_store] Initializing FinAgentVectorStore: "
+            f"embedding_model={config.EMBEDDING_MODEL_NAME}, device={config.EMBEDDING_DEVICE}"
+        )
         self._embeddings = HuggingFaceEmbeddings(
             model_name=config.EMBEDDING_MODEL_NAME,
             model_kwargs={"device": config.EMBEDDING_DEVICE},
@@ -69,7 +77,12 @@ class FinAgentVectorStore:
 
         self._cross_encoder = None
         if config.ENABLE_RERANKING and _CROSS_ENCODER_AVAILABLE:
+            logger.info(f"[vector_store] Initializing cross-encoder: {config.RERANK_MODEL_NAME}")
             self._cross_encoder = HuggingFaceCrossEncoder(model_name=config.RERANK_MODEL_NAME)
+        elif config.ENABLE_RERANKING:
+            logger.warning("[vector_store] Reranking enabled but cross-encoder unavailable")
+        else:
+            logger.debug("[vector_store] Cross-encoder reranking disabled")
 
     @property
     def is_empty(self) -> bool:
@@ -80,39 +93,51 @@ class FinAgentVectorStore:
     def add_documents(self, documents: List[Document]) -> int:
         """Embed and index a batch of chunks (from rag/ingest.py). Returns chunks added."""
         if not documents:
+            logger.debug("[vector_store] add_documents called with empty list")
             return 0
 
+        logger.info(f"[vector_store] Adding {len(documents)} documents to index")
         if self._faiss_store is None:
+            logger.debug("[vector_store] Creating new FAISS index")
             self._faiss_store = FAISS.from_documents(documents, self._embeddings)
         else:
+            logger.debug("[vector_store] Appending to existing FAISS index")
             self._faiss_store.add_documents(documents)
 
         self._documents.extend(documents)
         # BM25 has no incremental add in LangChain, so rebuild from the full
         # corpus. Fine at knowledge-base-ingestion cadence (uploads), not
         # meant for a high-frequency-write workload.
+        logger.debug(f"[vector_store] Rebuilding BM25 index over {len(self._documents)} total documents")
         self._bm25_retriever = BM25Retriever.from_documents(self._documents)
         self._bm25_retriever.k = config.SPARSE_TOP_K
 
+        logger.info(f"[vector_store] Index updated: FAISS+BM25, total docs={len(self._documents)}")
         return len(documents)
 
     # -- persistence -----------------------------------------------------
 
     def save(self, path: str = config.VECTOR_STORE_DIR) -> None:
         if self._faiss_store is None:
+            logger.error("[vector_store] Cannot save: no documents have been indexed yet")
             raise ValueError("Nothing to save — no documents have been indexed yet.")
+        logger.info(f"[vector_store] Saving vector store to {path}")
         os.makedirs(path, exist_ok=True)
         self._faiss_store.save_local(path)
         with open(os.path.join(path, "documents.pkl"), "wb") as f:
             pickle.dump(self._documents, f)
+        logger.info(f"[vector_store] Vector store saved: {len(self._documents)} documents, {len(self._faiss_store.index_to_docstore_id)} FAISS index entries")
 
     def load(self, path: str = config.VECTOR_STORE_DIR) -> bool:
         """Returns True if an existing index was found on disk and loaded."""
         index_file = os.path.join(path, "index.faiss")
         docs_file = os.path.join(path, "documents.pkl")
+        
         if not (os.path.exists(index_file) and os.path.exists(docs_file)):
+            logger.debug(f"[vector_store] No persisted index found at {path} (expected files: index.faiss, documents.pkl)")
             return False
 
+        logger.info(f"[vector_store] Loading persisted vector store from {path}")
         # allow_dangerous_deserialization: safe here because this only ever
         # loads an index this same app previously saved, never a third-party file.
         self._faiss_store = FAISS.load_local(
@@ -122,6 +147,8 @@ class FinAgentVectorStore:
             self._documents = pickle.load(f)
         self._bm25_retriever = BM25Retriever.from_documents(self._documents)
         self._bm25_retriever.k = config.SPARSE_TOP_K
+        
+        logger.info(f"[vector_store] Loaded: {len(self._documents)} documents in FAISS+BM25 indices")
         return True
 
     # -- retrieval -----------------------------------------------------
@@ -132,26 +159,54 @@ class FinAgentVectorStore:
         recency, optionally reranked, and returned as RetrievedPassage
         objects ready to drop into FinAgentState.
         """
+        retrieval_start = time.perf_counter()
         top_k = top_k or config.FINAL_TOP_K
+        
+        logger.info(f"[vector_store.retrieve] Query: {query[:100]}..." if len(query) > 100 else f"[vector_store.retrieve] Query: {query}")
 
         if self._faiss_store is None or self._bm25_retriever is None:
+            logger.warning("[vector_store.retrieve] Index is empty (not initialized)")
             return []
 
+        logger.debug("[vector_store.retrieve] Running dense (FAISS) retrieval...")
         dense_docs = self._faiss_store.similarity_search(query, k=config.DENSE_TOP_K)
+        logger.info(f"[vector_store.retrieve] FAISS returned {len(dense_docs)} candidates (k={config.DENSE_TOP_K})")
+        
+        logger.debug("[vector_store.retrieve] Running sparse (BM25) retrieval...")
         sparse_docs = self._bm25_retriever.invoke(query)
+        logger.info(f"[vector_store.retrieve] BM25 returned {len(sparse_docs)} candidates (k={config.SPARSE_TOP_K})")
 
         fused = self._reciprocal_rank_fusion(dense_docs, sparse_docs)
+        logger.info(f"[vector_store.retrieve] RRF fused {len(fused)} unique documents from dense+sparse results")
+        
         scored = self._apply_recency_weighting(fused)
         scored.sort(key=lambda pair: pair[1], reverse=True)
+        logger.debug(f"[vector_store.retrieve] After recency weighting and sorting: {len(scored)} candidates")
 
         pool_size = config.RERANK_CANDIDATE_POOL if self._cross_encoder else top_k
         candidate_pool = scored[:pool_size]
+        logger.debug(f"[vector_store.retrieve] Candidate pool size: {len(candidate_pool)} (will rerank={self._cross_encoder is not None})")
 
         if self._cross_encoder:
+            logger.debug(f"[vector_store.retrieve] Running cross-encoder reranking on {len(candidate_pool)} candidates...")
             candidate_pool = self._rerank(query, candidate_pool)
+            logger.info(f"[vector_store.retrieve] After reranking: {len(candidate_pool)} scored candidates")
 
         final = candidate_pool[:top_k]
-        return [self._to_retrieved_passage(doc, score) for doc, score in final]
+        logger.info(f"[vector_store.retrieve] Final top-k: {len(final)} passages selected (requested k={top_k})")
+        
+        retrieved_passages = [self._to_retrieved_passage(doc, score) for doc, score in final]
+        
+        for i, p in enumerate(retrieved_passages[:5]):
+            logger.debug(
+                f"[vector_store.retrieve] Final result {i+1}: id={p.passage_id}, score={p.similarity_score:.4f}, "
+                f"source={p.source_document}, text_preview={p.text[:80]}..."
+            )
+        
+        elapsed = time.perf_counter() - retrieval_start
+        logger.info(f"[vector_store.retrieve] Retrieval completed in {elapsed:.3f}s: {len(retrieved_passages)} final passages")
+        
+        return retrieved_passages
 
     # -- internal helpers ------------------------------------------------
 
@@ -244,6 +299,11 @@ def get_vector_store() -> FinAgentVectorStore:
     """Lazily build+cache the vector store, loading a persisted index if one exists."""
     global _store
     if _store is None:
+        logger.info("[vector_store] Initializing module-level vector store singleton")
         _store = FinAgentVectorStore()
-        _store.load()  # no-op if nothing has been persisted yet
+        loaded = _store.load()  # no-op if nothing has been persisted yet
+        if not loaded:
+            logger.info("[vector_store] No persisted index found; vector store ready for new ingestion")
+        else:
+            logger.info("[vector_store] Vector store loaded from persistence")
     return _store
