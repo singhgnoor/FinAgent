@@ -20,7 +20,7 @@ DATA_DIR = BASE_DIR / "data"
 LOG_DIR = BASE_DIR / "logs"
 
 # Logging
-LOG_LEVEL = logging.DEBUG if VERBOSE else logging.INFO
+LOG_LEVEL = "DEBUG" if VERBOSE else "INFO"
 
 ## LLM Backbone — OpenAI, declared per PS 3.1
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY")
