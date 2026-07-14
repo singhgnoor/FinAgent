@@ -24,7 +24,7 @@ LOG_LEVEL = "DEBUG" if VERBOSE else "INFO"
 
 ## LLM Backbone — OpenAI, declared per PS 3.1
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY")
-LLM_MODEL_NAME = "gpt-5.4-mini"
+LLM_MODEL_NAME = "gpt-4o-mini"
 LLM_TEMPERATURE = 0.2
 
 ## Knowledge base source documents, for the KB build/test script
