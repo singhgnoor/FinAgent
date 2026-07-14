@@ -56,6 +56,7 @@ from core.state import (
     Hypothesis,
     NormalizedEvent,
     RetrievedPassage,
+    SignalType,
     TimeHorizon,
     new_trace_event,
 )
@@ -140,6 +141,24 @@ def _get_llm_analysis(
     )
     logger.debug(f"[analysis.llm] Event text preview: {event.normalized_text[:150]}")
     
+    # Check signal type and format technical metrics if it's a price tick
+    if event.event_type == SignalType.PRICE_TICK and event.price_data:
+        pd = event.price_data
+        ma_str = f"{pd.moving_average:.2f}" if pd.moving_average is not None else "N/A"
+        rsi_str = f"{pd.rsi:.2f}" if pd.rsi is not None else "N/A"
+        event_details = (
+            f"Technical Metrics:\n"
+            f"- Current Price (Close): {pd.close}\n"
+            f"- Daily Range (Low-High): {pd.low} - {pd.high}\n"
+            f"- Daily Open: {pd.open}\n"
+            f"- Trading Volume: {pd.volume}\n"
+            f"- 20-period Simple Moving Average (SMA): {ma_str}\n"
+            f"- 14-period Relative Strength Index (RSI): {rsi_str}\n"
+            f"(Note: RSI > 70 generally indicates overbought conditions; RSI < 30 indicates oversold conditions.)"
+        )
+    else:
+        event_details = f"Text: {event.normalized_text}"
+
     llm_start = time.perf_counter()
     structured_llm = get_llm().with_structured_output(_AnalysisOutput)
     chain = _ANALYSIS_PROMPT | structured_llm
@@ -148,7 +167,7 @@ def _get_llm_analysis(
         result = chain.invoke({
             "asset": event.asset or "UNKNOWN",
             "event_type": event.event_type.value,
-            "normalized_text": event.normalized_text,
+            "normalized_text": event_details,
             "passages_block": _build_passages_block(passages),
         })
         
