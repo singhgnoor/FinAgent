@@ -190,7 +190,11 @@ class FinAgentVectorStore:
         if self._cross_encoder:
             logger.debug(f"[vector_store.retrieve] Running cross-encoder reranking on {len(candidate_pool)} candidates...")
             candidate_pool = self._rerank(query, candidate_pool)
-            logger.info(f"[vector_store.retrieve] After reranking: {len(candidate_pool)} scored candidates")
+        else:
+            # Normalize raw RRF scores to [0, 1] range based on theoretical max
+            max_rrf = (config.DENSE_WEIGHT + config.SPARSE_WEIGHT) / (config.RRF_K + 1)
+            candidate_pool = [(doc, min(score / max_rrf, 1.0)) for doc, score in candidate_pool]
+            logger.info(f"[vector_store.retrieve] After normalization: {len(candidate_pool)} scored candidates")
 
         final = candidate_pool[:top_k]
         logger.info(f"[vector_store.retrieve] Final top-k: {len(final)} passages selected (requested k={top_k})")
@@ -266,7 +270,12 @@ class FinAgentVectorStore:
         documents = [doc for doc, _score in scored_docs]
         pairs = [(query, doc.page_content) for doc in documents]
         ce_scores = self._cross_encoder.score(pairs)
-        return sorted(zip(documents, ce_scores), key=lambda pair: pair[1], reverse=True)
+        
+        # Normalize raw logits using a sigmoid function to bound them in [0, 1]
+        import math
+        normalized_scores = [1.0 / (1.0 + math.exp(-float(s))) for s in ce_scores]
+        
+        return sorted(zip(documents, normalized_scores), key=lambda pair: pair[1], reverse=True)
 
     @staticmethod
     def _to_retrieved_passage(doc: Document, score: float) -> RetrievedPassage:

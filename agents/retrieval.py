@@ -19,6 +19,7 @@ from core.state import (
     AgentName,
     FinAgentState,
     RetrievedPassage,
+    SignalType,
     new_trace_event,
 )
 
@@ -33,7 +34,10 @@ def _build_query(state: FinAgentState) -> str:
     event = state.get("normalized_event")
     if event is None:
         return ""
-    return f"Relevant context for: {event.normalized_text}"
+    if event.event_type == SignalType.PRICE_TICK:
+        # Price ticks don't have literal text in reference reports, so we query semantically for company outlook/performance
+        return f"{event.asset} financial performance, business outlook, valuation, and growth drivers"
+    return event.normalized_text
 
 
 def _vector_search(query: str, top_k: int = TOP_K_DEFAULT) -> List[RetrievedPassage]:
