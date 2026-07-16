@@ -171,6 +171,119 @@ class TestIngestionAndAnalysis(unittest.TestCase):
         self.assertIn("20-period Simple Moving Average (SMA): 110.50", prompt_str)
         self.assertIn("14-period Relative Strength Index (RSI): 60.50", prompt_str)
 
+    def test_query_building_for_ticks(self):
+        # Verify that _build_query outputs a semantic query for TICK signals
+        from agents.retrieval import _build_query
+        from core.state import PriceData, NormalizedEvent
+        event = NormalizedEvent(
+            event_id="evt_001",
+            event_type=SignalType.PRICE_TICK,
+            asset="TCS",
+            source="yfinance",
+            timestamp=datetime.now(timezone.utc),
+            ingested_at=datetime.now(timezone.utc),
+            normalized_text="TICK for TCS: close=4198.0, volume=312000.0, MA(20)=3980.0, RSI(14)=78.4",
+            price_data=PriceData(
+                open=4150.0, high=4210.0, low=4140.0, close=4198.0, volume=312000,
+                moving_average=3980.0, rsi=78.4
+            )
+        )
+        state = create_initial_state()
+        state["normalized_event"] = event
+        
+        query = _build_query(state)
+        self.assertEqual(query, "TCS financial performance, business outlook, valuation, and growth drivers")
+
+    def test_rerank_score_sigmoid_normalization(self):
+        # Verify that cross-encoder logit scores are normalized to [0, 1] similarities
+        from langchain_core.documents import Document
+        from rag.vector_store import FinAgentVectorStore
+        
+        store = FinAgentVectorStore()
+        # Mock cross encoder
+        mock_ce = MagicMock()
+        mock_ce.score.return_value = [-4.4548, 2.197] # -4.4548 (should map to ~0.011), 2.197 (should map to ~0.90)
+        store._cross_encoder = mock_ce
+        
+        # Call _rerank
+        docs = [
+            (Document(page_content="doc1"), -4.4548),
+            (Document(page_content="doc2"), 2.197)
+        ]
+        
+        reranked = store._rerank("query", docs)
+        
+        self.assertEqual(len(reranked), 2)
+        # doc2 should be ranked first because its score is higher
+        self.assertEqual(reranked[0][0].page_content, "doc2")
+        self.assertAlmostEqual(reranked[0][1], 1.0 / (1.0 + 2.718281828459045 ** -2.197), places=3)
+        
+        self.assertEqual(reranked[1][0].page_content, "doc1")
+        self.assertAlmostEqual(reranked[1][1], 1.0 / (1.0 + 2.718281828459045 ** 4.4548), places=3)
+
+    def test_yfinance_live_fetcher(self):
+        # Mock yfinance to prevent actual network calls during testing
+        from core.ingestion_manager import fetch_live_yfinance_tick
+        import pandas as pd
+        
+        mock_data = pd.DataFrame([{
+            "Open": 4150.0, "High": 4200.0, "Low": 4140.0, "Close": 4195.0, "Volume": 150000.0
+        }])
+        
+        with patch('yfinance.Ticker') as mock_ticker_cls:
+            mock_ticker = MagicMock()
+            mock_ticker.history.return_value = mock_data
+            mock_ticker_cls.return_value = mock_ticker
+            
+            # Fetch tick for TCS
+            signal = fetch_live_yfinance_tick("TCS")
+            
+            # Verify ticker was instantiated with mapped symbol
+            mock_ticker_cls.assert_called_once_with("TCS.NS")
+            
+            # Verify resulting signal payload
+            self.assertIsNotNone(signal)
+            self.assertEqual(signal.payload["asset"], "TCS")
+            self.assertEqual(signal.payload["close"], 4195.0)
+            self.assertEqual(signal.payload["volume"], 150000.0)
+
+    def test_csv_streaming(self):
+        # Test loading from a temporary CSV file with messy column names
+        from core.ingestion_manager import stream_from_csv
+        import tempfile
+        
+        csv_content = (
+            "Timestamp, Open Price, High, Low, Close Price, Volume Traded\n"
+            "2026-07-14 10:00:00, 100.0, 105.0, 99.0, 104.0, 1000\n"
+            "2026-07-14 10:01:00, 104.0, 106.0, 103.0, 105.0, 1200\n"
+        )
+        
+        # Create a temporary file and write the mock CSV data
+        with tempfile.NamedTemporaryFile(mode="w+", delete=False, suffix=".csv") as temp_csv:
+            temp_csv.write(csv_content)
+            temp_csv_path = temp_csv.name
+            
+        try:
+            # Consume the CSV stream generator
+            signals = list(stream_from_csv(temp_csv_path, "INFY"))
+            
+            self.assertEqual(len(signals), 2)
+            
+            # Verify row 1 mappings
+            self.assertEqual(signals[0].payload["asset"], "INFY")
+            self.assertEqual(signals[0].payload["open"], 100.0)
+            self.assertEqual(signals[0].payload["close"], 104.0)
+            self.assertEqual(signals[0].payload["volume"], 1000.0)
+            
+            # Verify row 2 mappings
+            self.assertEqual(signals[1].payload["close"], 105.0)
+            self.assertEqual(signals[1].payload["volume"], 1200.0)
+            
+        finally:
+            # Clean up temporary file
+            if os.path.exists(temp_csv_path):
+                os.remove(temp_csv_path)
+
 
 if __name__ == "__main__":
     unittest.main()
