@@ -3,6 +3,7 @@
 __pycache__/
 *.pyc
 *.log
+.env
 
 temp.py
 temp.ipynb
