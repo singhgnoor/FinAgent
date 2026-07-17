@@ -43,7 +43,7 @@ export default function TraceViewer() {
   const [selectedId, setSelectedId] = useState<string>("")
   const { data: decision, isLoading } = useDecision(selectedId || undefined)
 
-  const trace = decision?.trace || []
+  const trace = (decision as any)?.trace_log || (decision as any)?.trace || []
 
   return (
     <div>
@@ -64,9 +64,9 @@ export default function TraceViewer() {
                 <SelectValue placeholder="Select a decision..." />
               </SelectTrigger>
               <SelectContent>
-                {decisionsData?.items?.map((d) => (
-                  <SelectItem key={d.decision_id} value={d.decision_id}>
-                    {d.asset} - {d.action} ({new Date(d.timestamp).toLocaleString()})
+                {decisionsData?.items?.map((d: any) => (
+                  <SelectItem key={d.artefact_id || d.decision_id} value={d.artefact_id || d.decision_id}>
+                    {d.asset} - {d.action} ({new Date(d.created_at || d.timestamp).toLocaleString()})
                   </SelectItem>
                 ))}
               </SelectContent>

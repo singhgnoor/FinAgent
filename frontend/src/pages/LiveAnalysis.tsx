@@ -42,6 +42,28 @@ const newsSchema = z.object({
 type PriceTickForm = z.infer<typeof priceTickSchema>
 type NewsForm = z.infer<typeof newsSchema>
 
+function mapResponse(res: any): PipelineResponse {
+  const passages = (res.retrieved_passages || []).map((p: any) => ({
+    content: p.text,
+    source: p.source_document,
+    relevance_score: p.similarity_score,
+  }))
+  return {
+    status: res.success ? "ok" : "error",
+    state: {
+      status: res.success ? "ok" : "error",
+      normalized_event: res.normalized_event,
+      retrieved_passages: passages,
+      hypothesis: res.hypothesis,
+      decision: res.decision,
+      trace: res.trace_log,
+      error: res.errors?.[0],
+      timing: { total_ms: res.elapsed_ms },
+    },
+    decision_id: res.signal_id,
+  }
+}
+
 export default function LiveAnalysis() {
   const [tab, setTab] = useState<"price" | "news">("price")
   const [result, setResult] = useState<PipelineResponse | null>(null)
@@ -55,7 +77,7 @@ export default function LiveAnalysis() {
   async function onPriceTick(data: PriceTickForm) {
     try {
       const res = await priceMutation.mutateAsync(data)
-      setResult(res)
+      setResult(mapResponse(res))
       toast({ title: "Analysis complete", variant: "default" })
     } catch (e: any) {
       toast({ title: "Analysis failed", description: e.message, variant: "destructive" })
@@ -65,7 +87,7 @@ export default function LiveAnalysis() {
   async function onNews(data: NewsForm) {
     try {
       const res = await newsMutation.mutateAsync(data)
-      setResult(res)
+      setResult(mapResponse(res))
       toast({ title: "Analysis complete", variant: "default" })
     } catch (e: any) {
       toast({ title: "Analysis failed", description: e.message, variant: "destructive" })

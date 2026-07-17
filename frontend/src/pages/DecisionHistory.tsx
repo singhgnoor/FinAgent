@@ -1,5 +1,5 @@
-import { useState } from "react"
-import { motion, AnimatePresence } from "framer-motion"
+import React, { useState } from "react"
+import { motion } from "framer-motion"
 import {
   History, ChevronDown, ChevronUp, Download, Search,
   TrendingUp, TrendingDown, Minus, Activity, AlertTriangle
@@ -12,17 +12,14 @@ import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow
 } from "@/components/ui/table"
 import { Skeleton } from "@/components/ui/skeleton"
-import { Separator } from "@/components/ui/separator"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { PageHeader } from "@/components/shared/PageHeader"
 import { AnimatedCard } from "@/components/shared/AnimatedCard"
 import { EmptyState } from "@/components/shared/EmptyState"
 import { StatusBadge } from "@/components/shared/StatusBadge"
-import { PipelineVisualizer } from "@/components/shared/PipelineVisualizer"
 import { useDecisions } from "@/hooks/use-decisions"
-import type { DecisionHistoryEntry } from "@/types/api"
 
-const actionIcon = {
+const actionIcon: Record<string, React.ReactNode> = {
   BUY: <TrendingUp className="h-4 w-4 text-green-500" />,
   SELL: <TrendingDown className="h-4 w-4 text-red-500" />,
   HOLD: <Minus className="h-4 w-4 text-amber-500" />,
@@ -36,8 +33,8 @@ export default function DecisionHistory() {
 
   const { data, isLoading } = useDecisions({ page, page_size: 10 })
 
-  const filtered = data?.items?.filter((d) =>
-    !searchAsset || d.asset.toLowerCase().includes(searchAsset.toLowerCase())
+  const filtered = data?.items?.filter((d: any) =>
+    !searchAsset || (d.asset || "").toLowerCase().includes(searchAsset.toLowerCase())
   )
 
   function toggleRow(id: string) {
@@ -46,13 +43,19 @@ export default function DecisionHistory() {
 
   function handleExport() {
     if (!data?.items) return
-    const csv = [
-      ["Timestamp", "Asset", "Signal Type", "Action", "Confidence", "Risk Level", "Time Horizon", "Alert", "Reasoning"].join(","),
-      ...data.items.map((d) =>
-        [d.timestamp, d.asset, d.signal_type, d.action, d.confidence, d.risk_level, d.time_horizon, d.alert, `"${d.reasoning.replace(/"/g, '""')}"`].join(",")
-      ),
-    ].join("\n")
-    const blob = new Blob([csv], { type: "text/csv" })
+    const headers = ["Timestamp", "Asset", "Action", "Confidence", "Level", "Alert", "Commentary"]
+    const rows = data.items.map((d: any) =>
+      [
+        d.created_at || d.timestamp || "",
+        d.asset,
+        d.action,
+        d.confidence_score ?? d.confidence ?? "",
+        d.confidence_level || "",
+        d.alert_triggered ?? d.alert ?? "",
+        `"${((d.llm_commentary || d.commentary || "")).replace(/"/g, '""')}"`,
+      ].join(",")
+    )
+    const blob = new Blob([headers.join(","), ...rows].join("\n"), { type: "text/csv" })
     const url = URL.createObjectURL(blob)
     const a = document.createElement("a")
     a.href = url
@@ -104,140 +107,119 @@ export default function DecisionHistory() {
                     <TableHead className="w-8"></TableHead>
                     <TableHead>Timestamp</TableHead>
                     <TableHead>Asset</TableHead>
-                    <TableHead>Signal Type</TableHead>
                     <TableHead>Action</TableHead>
                     <TableHead>Confidence</TableHead>
-                    <TableHead>Risk</TableHead>
+                    <TableHead>Level</TableHead>
                     <TableHead>Alert</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {filtered.map((decision) => (
-                    <>
-                      <TableRow
-                        key={decision.decision_id}
-                        className="cursor-pointer"
-                        onClick={() => toggleRow(decision.decision_id)}
-                      >
-                        <TableCell>
-                          {expandedRow === decision.decision_id
-                            ? <ChevronUp className="h-4 w-4" />
-                            : <ChevronDown className="h-4 w-4" />}
-                        </TableCell>
-                        <TableCell className="text-xs">
-                          {new Date(decision.timestamp).toLocaleString()}
-                        </TableCell>
-                        <TableCell className="font-medium">{decision.asset}</TableCell>
-                        <TableCell>
-                          <Badge variant="outline" className="text-xs">{decision.signal_type}</Badge>
-                        </TableCell>
-                        <TableCell>
-                          <Badge
-                            className={
-                              decision.action === "BUY" ? "bg-green-500/20 text-green-500" :
-                              decision.action === "SELL" ? "bg-red-500/20 text-red-500" :
-                              "bg-amber-500/20 text-amber-500"
-                            }
-                          >
-                            {actionIcon[decision.action]}
-                            <span className="ml-1">{decision.action}</span>
-                          </Badge>
-                        </TableCell>
-                        <TableCell>
-                          <span
-                            className={
-                              decision.confidence >= 70 ? "text-green-500" :
-                              decision.confidence >= 40 ? "text-amber-500" :
-                              "text-red-500"
-                            }
-                          >
-                            {Math.round(decision.confidence)}%
-                          </span>
-                        </TableCell>
-                        <TableCell>
-                          <StatusBadge status={decision.risk_level} />
-                        </TableCell>
-                        <TableCell>
-                          {decision.alert ? (
-                            <AlertTriangle className="h-4 w-4 text-amber-500" />
-                          ) : (
-                            <span className="text-muted-foreground">—</span>
-                          )}
-                        </TableCell>
-                      </TableRow>
-                      {expandedRow === decision.decision_id && (
-                        <TableRow key={`${decision.decision_id}-detail`}>
-                          <TableCell colSpan={8} className="bg-muted/30 p-4">
-                            <motion.div
-                              initial={{ opacity: 0, height: 0 }}
-                              animate={{ opacity: 1, height: "auto" }}
-                              exit={{ opacity: 0, height: 0 }}
-                              className="space-y-4"
+                  {filtered.map((decision: any) => {
+                    const id = decision.artefact_id || decision.decision_id
+                    return (
+                      <React.Fragment key={id}>
+                        <TableRow
+                          className="cursor-pointer"
+                          onClick={() => toggleRow(id)}
+                        >
+                          <TableCell>
+                            {expandedRow === id
+                              ? <ChevronUp className="h-4 w-4" />
+                              : <ChevronDown className="h-4 w-4" />}
+                          </TableCell>
+                          <TableCell className="text-xs">
+                            {new Date(decision.created_at || decision.timestamp).toLocaleString()}
+                          </TableCell>
+                          <TableCell className="font-medium">{decision.asset}</TableCell>
+                          <TableCell>
+                            <Badge
+                              className={
+                                decision.action === "BUY" ? "bg-green-500/20 text-green-500" :
+                                decision.action === "SELL" ? "bg-red-500/20 text-red-500" :
+                                "bg-amber-500/20 text-amber-500"
+                              }
                             >
-                              <div>
-                                <h5 className="text-sm font-medium mb-2">Reasoning</h5>
-                                <p className="text-sm text-muted-foreground">{decision.reasoning}</p>
-                              </div>
-                              {decision.commentary && (
-                                <div>
-                                  <h5 className="text-sm font-medium mb-2">Commentary</h5>
-                                  <p className="text-sm text-muted-foreground">{decision.commentary}</p>
-                                </div>
-                              )}
-                              <div className="flex gap-4 text-sm">
-                                <div>
-                                  <span className="text-muted-foreground">Time Horizon:</span>{" "}
-                                  <span className="font-medium">{decision.time_horizon}</span>
-                                </div>
-                                <div>
-                                  <span className="text-muted-foreground">Confidence Level:</span>{" "}
-                                  <span className="font-medium">{decision.confidence_level}</span>
-                                </div>
-                                {decision.alert_reason && (
-                                  <div className="text-amber-500">
-                                    <span>Alert: {decision.alert_reason}</span>
-                                  </div>
-                                )}
-                              </div>
-                              {decision.risk_flags.length > 0 && (
-                                <div>
-                                  <h5 className="text-sm font-medium mb-2">Risk Flags</h5>
-                                  <div className="flex flex-wrap gap-1">
-                                    {decision.risk_flags.map((f) => (
-                                      <Badge key={f} variant="outline" className="text-xs">{f}</Badge>
-                                    ))}
-                                  </div>
-                                </div>
-                              )}
-                              {decision.trace && decision.trace.length > 0 && (
-                                <div>
-                                  <h5 className="text-sm font-medium mb-2">Pipeline Trace</h5>
-                                  <PipelineVisualizer trace={decision.trace} />
-                                </div>
-                              )}
-                              {decision.evidence && decision.evidence.length > 0 && (
-                                <div>
-                                  <h5 className="text-sm font-medium mb-2">Evidence</h5>
-                                  <ScrollArea className="h-[120px]">
-                                    <div className="space-y-2">
-                                      {decision.evidence.map((e, i) => (
-                                        <div key={i} className="rounded border p-2 text-xs">
-                                          <p className="line-clamp-2">{e.content}</p>
-                                          <p className="text-muted-foreground mt-1">
-                                            Source: {e.source} | Score: {Math.round(e.relevance_score * 100)}%
-                                          </p>
-                                        </div>
-                                      ))}
-                                    </div>
-                                  </ScrollArea>
-                                </div>
-                              )}
-                            </motion.div>
+                              {actionIcon[decision.action]}
+                              <span className="ml-1">{decision.action}</span>
+                            </Badge>
+                          </TableCell>
+                          <TableCell>
+                            <span
+                              className={
+                                (decision.confidence_score ?? decision.confidence ?? 0) >= 70 ? "text-green-500" :
+                                (decision.confidence_score ?? decision.confidence ?? 0) >= 40 ? "text-amber-500" :
+                                "text-red-500"
+                              }
+                            >
+                              {Math.round(decision.confidence_score ?? decision.confidence ?? 0)}%
+                            </span>
+                          </TableCell>
+                          <TableCell>
+                            <StatusBadge status={decision.confidence_level || "N/A"} />
+                          </TableCell>
+                          <TableCell>
+                            {(decision.alert_triggered ?? decision.alert) ? (
+                              <AlertTriangle className="h-4 w-4 text-amber-500" />
+                            ) : (
+                              <span className="text-muted-foreground">&mdash;</span>
+                            )}
                           </TableCell>
                         </TableRow>
-                      )}
-                    </>
-                  ))}
+                        {expandedRow === id && (
+                          <TableRow key={`${id}-detail`}>
+                            <TableCell colSpan={7} className="bg-muted/30 p-4">
+                              <motion.div
+                                initial={{ opacity: 0, height: 0 }}
+                                animate={{ opacity: 1, height: "auto" }}
+                                className="space-y-4"
+                              >
+                                <div className="flex gap-4 text-sm">
+                                  <div>
+                                    <span className="text-muted-foreground">Level:</span>{" "}
+                                    <span className="font-medium">{decision.confidence_level}</span>
+                                  </div>
+                                  <div>
+                                    <span className="text-muted-foreground">Score:</span>{" "}
+                                    <span className="font-medium">{decision.confidence_score ?? decision.confidence ?? "N/A"}/100</span>
+                                  </div>
+                                </div>
+                                {(decision.llm_commentary || decision.commentary) && (
+                                  <div>
+                                    <h5 className="text-sm font-medium mb-2">Commentary</h5>
+                                    <p className="text-sm text-muted-foreground">{decision.llm_commentary || decision.commentary}</p>
+                                  </div>
+                                )}
+                                {decision.risk_flags && decision.risk_flags.length > 0 && (
+                                  <div>
+                                    <h5 className="text-sm font-medium mb-2">Risk Flags</h5>
+                                    <div className="flex flex-wrap gap-1">
+                                      {decision.risk_flags.map((f: string) => (
+                                        <Badge key={f} variant="outline" className="text-xs">{f}</Badge>
+                                      ))}
+                                    </div>
+                                  </div>
+                                )}
+                                {decision.evidence_bullets && decision.evidence_bullets.length > 0 && (
+                                  <div>
+                                    <h5 className="text-sm font-medium mb-2">Evidence</h5>
+                                    <ScrollArea className="h-[120px]">
+                                      <div className="space-y-2">
+                                        {decision.evidence_bullets.map((bullet: string, i: number) => (
+                                          <div key={i} className="rounded border p-2 text-xs">
+                                            {bullet}
+                                          </div>
+                                        ))}
+                                      </div>
+                                    </ScrollArea>
+                                  </div>
+                                )}
+                              </motion.div>
+                            </TableCell>
+                          </TableRow>
+                        )}
+                      </React.Fragment>
+                    )
+                  })}
                 </TableBody>
               </Table>
 

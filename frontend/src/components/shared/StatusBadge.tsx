@@ -20,6 +20,8 @@ const statusColorMap: Record<string, string> = {
   not_configured: "text-red-500 border-red-500/30 bg-red-500/10",
   available: "text-green-500 border-green-500/30 bg-green-500/10",
   not_available: "text-red-500 border-red-500/30 bg-red-500/10",
+  "not configured": "text-red-500 border-red-500/30 bg-red-500/10",
+  "not ready": "text-amber-500 border-amber-500/30 bg-amber-500/10",
 }
 
 export function StatusBadge({ status, className }: StatusBadgeProps) {
