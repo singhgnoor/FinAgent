@@ -9,3 +9,5 @@ langchain-openai
 faiss-cpu
 rank_bm25
 langchain-huggingface
+yfinance
+pandas
