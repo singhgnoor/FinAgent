@@ -1,0 +1,280 @@
+import { useState } from "react"
+import { motion, AnimatePresence } from "framer-motion"
+import {
+  History, ChevronDown, ChevronUp, Download, Search,
+  TrendingUp, TrendingDown, Minus, Activity, AlertTriangle
+} from "lucide-react"
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
+import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import {
+  Table, TableBody, TableCell, TableHead, TableHeader, TableRow
+} from "@/components/ui/table"
+import { Skeleton } from "@/components/ui/skeleton"
+import { Separator } from "@/components/ui/separator"
+import { ScrollArea } from "@/components/ui/scroll-area"
+import { PageHeader } from "@/components/shared/PageHeader"
+import { AnimatedCard } from "@/components/shared/AnimatedCard"
+import { EmptyState } from "@/components/shared/EmptyState"
+import { StatusBadge } from "@/components/shared/StatusBadge"
+import { PipelineVisualizer } from "@/components/shared/PipelineVisualizer"
+import { useDecisions } from "@/hooks/use-decisions"
+import type { DecisionHistoryEntry } from "@/types/api"
+
+const actionIcon = {
+  BUY: <TrendingUp className="h-4 w-4 text-green-500" />,
+  SELL: <TrendingDown className="h-4 w-4 text-red-500" />,
+  HOLD: <Minus className="h-4 w-4 text-amber-500" />,
+  WATCH: <Activity className="h-4 w-4 text-amber-500" />,
+}
+
+export default function DecisionHistory() {
+  const [page, setPage] = useState(1)
+  const [searchAsset, setSearchAsset] = useState("")
+  const [expandedRow, setExpandedRow] = useState<string | null>(null)
+
+  const { data, isLoading } = useDecisions({ page, page_size: 10 })
+
+  const filtered = data?.items?.filter((d) =>
+    !searchAsset || d.asset.toLowerCase().includes(searchAsset.toLowerCase())
+  )
+
+  function toggleRow(id: string) {
+    setExpandedRow((prev) => (prev === id ? null : id))
+  }
+
+  function handleExport() {
+    if (!data?.items) return
+    const csv = [
+      ["Timestamp", "Asset", "Signal Type", "Action", "Confidence", "Risk Level", "Time Horizon", "Alert", "Reasoning"].join(","),
+      ...data.items.map((d) =>
+        [d.timestamp, d.asset, d.signal_type, d.action, d.confidence, d.risk_level, d.time_horizon, d.alert, `"${d.reasoning.replace(/"/g, '""')}"`].join(",")
+      ),
+    ].join("\n")
+    const blob = new Blob([csv], { type: "text/csv" })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement("a")
+    a.href = url
+    a.download = "decisions.csv"
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+
+  return (
+    <div>
+      <PageHeader
+        title="Decision History"
+        description="Browse all decisions made by the FinAgent pipeline"
+        action={
+          <Button variant="outline" size="sm" onClick={handleExport} disabled={!data?.items?.length}>
+            <Download className="h-4 w-4 mr-1" />
+            Export CSV
+          </Button>
+        }
+      />
+
+      <AnimatedCard delay={0}>
+        <CardHeader className="pb-3">
+          <div className="flex items-center justify-between">
+            <CardTitle className="text-lg">Decisions</CardTitle>
+            <div className="relative w-64">
+              <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder="Filter by asset..."
+                className="pl-8"
+                value={searchAsset}
+                onChange={(e) => setSearchAsset(e.target.value)}
+              />
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent>
+          {isLoading ? (
+            <div className="space-y-3">
+              {Array.from({ length: 8 }).map((_, i) => (
+                <Skeleton key={i} className="h-10 w-full" />
+              ))}
+            </div>
+          ) : filtered && filtered.length > 0 ? (
+            <div>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="w-8"></TableHead>
+                    <TableHead>Timestamp</TableHead>
+                    <TableHead>Asset</TableHead>
+                    <TableHead>Signal Type</TableHead>
+                    <TableHead>Action</TableHead>
+                    <TableHead>Confidence</TableHead>
+                    <TableHead>Risk</TableHead>
+                    <TableHead>Alert</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {filtered.map((decision) => (
+                    <>
+                      <TableRow
+                        key={decision.decision_id}
+                        className="cursor-pointer"
+                        onClick={() => toggleRow(decision.decision_id)}
+                      >
+                        <TableCell>
+                          {expandedRow === decision.decision_id
+                            ? <ChevronUp className="h-4 w-4" />
+                            : <ChevronDown className="h-4 w-4" />}
+                        </TableCell>
+                        <TableCell className="text-xs">
+                          {new Date(decision.timestamp).toLocaleString()}
+                        </TableCell>
+                        <TableCell className="font-medium">{decision.asset}</TableCell>
+                        <TableCell>
+                          <Badge variant="outline" className="text-xs">{decision.signal_type}</Badge>
+                        </TableCell>
+                        <TableCell>
+                          <Badge
+                            className={
+                              decision.action === "BUY" ? "bg-green-500/20 text-green-500" :
+                              decision.action === "SELL" ? "bg-red-500/20 text-red-500" :
+                              "bg-amber-500/20 text-amber-500"
+                            }
+                          >
+                            {actionIcon[decision.action]}
+                            <span className="ml-1">{decision.action}</span>
+                          </Badge>
+                        </TableCell>
+                        <TableCell>
+                          <span
+                            className={
+                              decision.confidence >= 70 ? "text-green-500" :
+                              decision.confidence >= 40 ? "text-amber-500" :
+                              "text-red-500"
+                            }
+                          >
+                            {Math.round(decision.confidence)}%
+                          </span>
+                        </TableCell>
+                        <TableCell>
+                          <StatusBadge status={decision.risk_level} />
+                        </TableCell>
+                        <TableCell>
+                          {decision.alert ? (
+                            <AlertTriangle className="h-4 w-4 text-amber-500" />
+                          ) : (
+                            <span className="text-muted-foreground">—</span>
+                          )}
+                        </TableCell>
+                      </TableRow>
+                      {expandedRow === decision.decision_id && (
+                        <TableRow key={`${decision.decision_id}-detail`}>
+                          <TableCell colSpan={8} className="bg-muted/30 p-4">
+                            <motion.div
+                              initial={{ opacity: 0, height: 0 }}
+                              animate={{ opacity: 1, height: "auto" }}
+                              exit={{ opacity: 0, height: 0 }}
+                              className="space-y-4"
+                            >
+                              <div>
+                                <h5 className="text-sm font-medium mb-2">Reasoning</h5>
+                                <p className="text-sm text-muted-foreground">{decision.reasoning}</p>
+                              </div>
+                              {decision.commentary && (
+                                <div>
+                                  <h5 className="text-sm font-medium mb-2">Commentary</h5>
+                                  <p className="text-sm text-muted-foreground">{decision.commentary}</p>
+                                </div>
+                              )}
+                              <div className="flex gap-4 text-sm">
+                                <div>
+                                  <span className="text-muted-foreground">Time Horizon:</span>{" "}
+                                  <span className="font-medium">{decision.time_horizon}</span>
+                                </div>
+                                <div>
+                                  <span className="text-muted-foreground">Confidence Level:</span>{" "}
+                                  <span className="font-medium">{decision.confidence_level}</span>
+                                </div>
+                                {decision.alert_reason && (
+                                  <div className="text-amber-500">
+                                    <span>Alert: {decision.alert_reason}</span>
+                                  </div>
+                                )}
+                              </div>
+                              {decision.risk_flags.length > 0 && (
+                                <div>
+                                  <h5 className="text-sm font-medium mb-2">Risk Flags</h5>
+                                  <div className="flex flex-wrap gap-1">
+                                    {decision.risk_flags.map((f) => (
+                                      <Badge key={f} variant="outline" className="text-xs">{f}</Badge>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
+                              {decision.trace && decision.trace.length > 0 && (
+                                <div>
+                                  <h5 className="text-sm font-medium mb-2">Pipeline Trace</h5>
+                                  <PipelineVisualizer trace={decision.trace} />
+                                </div>
+                              )}
+                              {decision.evidence && decision.evidence.length > 0 && (
+                                <div>
+                                  <h5 className="text-sm font-medium mb-2">Evidence</h5>
+                                  <ScrollArea className="h-[120px]">
+                                    <div className="space-y-2">
+                                      {decision.evidence.map((e, i) => (
+                                        <div key={i} className="rounded border p-2 text-xs">
+                                          <p className="line-clamp-2">{e.content}</p>
+                                          <p className="text-muted-foreground mt-1">
+                                            Source: {e.source} | Score: {Math.round(e.relevance_score * 100)}%
+                                          </p>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  </ScrollArea>
+                                </div>
+                              )}
+                            </motion.div>
+                          </TableCell>
+                        </TableRow>
+                      )}
+                    </>
+                  ))}
+                </TableBody>
+              </Table>
+
+              {data && data.total_pages > 1 && (
+                <div className="flex items-center justify-between mt-4">
+                  <p className="text-sm text-muted-foreground">
+                    Page {page} of {data.total_pages} ({data.total} total)
+                  </p>
+                  <div className="flex gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled={page <= 1}
+                      onClick={() => setPage((p) => p - 1)}
+                    >
+                      Previous
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled={page >= data.total_pages}
+                      onClick={() => setPage((p) => p + 1)}
+                    >
+                      Next
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </div>
+          ) : (
+            <EmptyState
+              title="No decisions found"
+              description={searchAsset ? "Try a different search term." : "Submit a signal to generate decisions."}
+            />
+          )}
+        </CardContent>
+      </AnimatedCard>
+    </div>
+  )
+}

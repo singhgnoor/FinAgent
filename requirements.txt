@@ -9,3 +9,9 @@ langchain-openai
 faiss-cpu
 rank_bm25
 langchain-huggingface
+fastapi
+uvicorn[standard]
+python-multipart
+pandas
+yfinance
+python-dotenv

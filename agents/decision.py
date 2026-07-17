@@ -154,11 +154,13 @@ def decision_node(state: FinAgentState) -> dict:
     logger.info("[decision] Node entry: checking for hypothesis")
 
     if hypothesis is None:
+        elapsed = time.perf_counter() - node_start
         logger.warning("[decision] Skipping: no hypothesis in state")
         trace = new_trace_event(
             agent=AgentName.DECISION,
             action="skip_no_hypothesis",
             output_summary="no-op, no hypothesis in state",
+            duration_ms=round(elapsed * 1000, 2),
             status="fallback",
         )
         logger.debug(f"[decision] Trace event: {trace.model_dump_json()}")
@@ -192,6 +194,8 @@ def decision_node(state: FinAgentState) -> dict:
     
     artefact = _synthesize_artefact(state, advice)
 
+    elapsed = time.perf_counter() - node_start
+
     trace = new_trace_event(
         agent=AgentName.DECISION,
         action="synthesize_artefact",
@@ -199,6 +203,7 @@ def decision_node(state: FinAgentState) -> dict:
         input_summary=f"hypothesis id={hypothesis.hypothesis_id}",
         output_summary=f"artefact id={artefact.artefact_id}, "
                         f"action={artefact.action.value}, alert={artefact.alert_triggered}",
+        duration_ms=round(elapsed * 1000, 2),
         status=advice_status,
         error_message=advice_error,
     )
@@ -218,7 +223,6 @@ def decision_node(state: FinAgentState) -> dict:
     if artefact.llm_commentary:
         logger.debug(f"[decision] LLM commentary: {artefact.llm_commentary}")
     
-    elapsed = time.perf_counter() - node_start
     logger.info(f"[decision] Node exit: elapsed={elapsed:.3f}s")
     logger.debug(f"[decision] Trace event: {trace.model_dump_json()}")
 

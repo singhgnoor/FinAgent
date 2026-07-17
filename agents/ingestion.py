@@ -226,6 +226,8 @@ def ingestion_node(state: FinAgentState) -> dict:
     normalized_event = _normalize_raw_signal(raw_signal)
     logger.debug(f"[ingestion] Normalized raw_signal (type={raw_signal.signal_type.value}) -> event_id={normalized_event.event_id}")
 
+    elapsed = time.perf_counter() - node_start
+
     trace = new_trace_event(
         agent=AgentName.INGESTION,
         action="normalize_signal",
@@ -234,9 +236,9 @@ def ingestion_node(state: FinAgentState) -> dict:
             f"normalized_event id={normalized_event.event_id}, "
             f"asset={normalized_event.asset or 'None'}, text={normalized_event.normalized_text[:50]}"
         ),
+        duration_ms=round(elapsed * 1000, 2),
     )
     
-    elapsed = time.perf_counter() - node_start
     logger.info(
         f"[ingestion] Node exit: normalized_event_id={normalized_event.event_id}, "
         f"asset={normalized_event.asset}, elapsed={elapsed:.3f}s"

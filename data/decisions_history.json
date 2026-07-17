@@ -1,0 +1,68 @@
+[
+  {
+    "artefact_id": "ddb7ef59-646f-4ed3-be2b-e11737e3102b",
+    "asset": "BTC/USD",
+    "action": "BUY",
+    "confidence_score": 61,
+    "confidence_level": "Medium",
+    "evidence_bullets": [
+      "Current Price (Close): 676.0",
+      "20-period Simple Moving Average (SMA): 492.00",
+      "14-period Relative Strength Index (RSI): 65.28"
+    ],
+    "risk_flags": [
+      "The setup relies on only one brief technical snapshot; there is no confirmation from higher-timeframe trend, volume, volatility, or support/resistance structure.",
+      "Price is already far above the 20-period SMA, which can reflect an extended move rather than a durable trend and raises the risk of mean reversion or consolidation.",
+      "RSI at 65.28 is positive but close enough to overbought territory that a small continuation could quickly turn into a momentum exhaustion signal.",
+      "No evidence is provided on recent candles, breakout quality, or market regime, so the bullish bias may be overstated if this is a low-liquidity or news-driven spike."
+    ],
+    "llm_commentary": "Treat this as a tentative short-term bullish read, not a high-conviction signal. The technical edge is real but thin, and the lack of broader context means a trader should be ready for a pullback or chop even if the directional bias remains upward.",
+    "created_at": "2026-07-17T17:22:32.012872Z",
+    "alert_triggered": false,
+    "source_hypothesis_id": "a8e31abe-0e34-4df6-acab-c8dabc366699"
+  },
+  {
+    "artefact_id": "0700ee89-136f-4e12-bc2a-b6cb946759cf",
+    "asset": "BTC/USD",
+    "action": "SELL",
+    "confidence_score": 62,
+    "confidence_level": "Medium",
+    "evidence_bullets": [
+      "[225212ad-7d67-42b2-a0b1-31d6366b6f08] Price is trading below the 20-period SMA of 401.50.",
+      "[225212ad-7d67-42b2-a0b1-31d6366b6f08] RSI(14) of 33.5 suggests neutral territory.",
+      "[225212ad-7d67-42b2-a0b1-31d6366b6f08] Traders often interpret high volume breakouts above resistance as confirmation of momentum, while low volume moves above moving averages may indicate weak follow-through."
+    ],
+    "risk_flags": [
+      "The price/SMA relationship is unusually extreme (130.0 vs 401.50); this may reflect a data anomaly, stale SMA window, or a regime break rather than a clean bearish trend signal.",
+      "RSI at 33.5 is near oversold and does not confirm fresh downside momentum; a short-term bounce or mean reversion remains plausible.",
+      "The case relies on a single bar and lacks volume confirmation, so the bearish signal may not have follow-through.",
+      "No broader market or higher-timeframe context is provided; BTC can diverge sharply from short-term technicals when macro or liquidity conditions shift."
+    ],
+    "llm_commentary": "Treat this as a lower-confidence bearish setup until the price/indicator inputs are verified and follow-through is seen on volume. The current evidence supports downside risk, but the extreme gap to the moving average and lack of confirmation make it vulnerable to a sharp reversal.",
+    "created_at": "2026-07-17T17:27:43.711664Z",
+    "alert_triggered": false,
+    "source_hypothesis_id": "e60130d6-5bd7-4d22-badf-78780b97ea9e"
+  },
+  {
+    "artefact_id": "e254db60-7798-4865-a63c-36c62d47e689",
+    "asset": "BTC/USD",
+    "action": "BUY",
+    "confidence_score": 72,
+    "confidence_level": "High",
+    "evidence_bullets": [
+      "Price at 1300.0 with volume of 10000.",
+      "RSI(14) of 67.5 suggests neutral territory.",
+      "Price is trading above the 20-period SMA of 581.20."
+    ],
+    "risk_flags": [
+      "The price-to-SMA gap is extremely large (1300 vs 581.2), which is unusual for a short-term continuation setup and may indicate a data issue, a regime shift, or a late-stage move rather than a clean breakout.",
+      "RSI at 67.5 is close to overbought, not truly neutral; that reduces room for upside follow-through and raises the odds of near-term mean reversion.",
+      "The rationale relies on a single price bar and does not show trend persistence, recent resistance levels, or multi-bar confirmation, so the breakout signal may be fragile.",
+      "Volume is labeled 'high enough to matter' but no baseline/relative volume is provided, making it hard to judge whether the move is genuinely confirming or just noisy."
+    ],
+    "llm_commentary": "Treat this as a tentative bullish bias rather than strong confirmation. Before acting, verify the price and SMA inputs, check whether the move is supported by multiple candles and relative volume, and be cautious that the trade may already be extended.",
+    "created_at": "2026-07-17T17:29:22.178078Z",
+    "alert_triggered": true,
+    "source_hypothesis_id": "5423d1ae-8701-42d3-b091-7435c4c3a21b"
+  }
+]

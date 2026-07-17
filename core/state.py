@@ -187,10 +187,11 @@ class TraceEvent(BaseModel):
     """One row of the required agent trace log: which agent, what it did, what it returned."""
     event_id: str
     agent: AgentName
-    action: str                                  # short description, e.g. "normalize_signal"
+    action: str
     tool_calls: List[str] = Field(default_factory=list)
     input_summary: str = ""
     output_summary: str = ""
+    duration_ms: float = 0.0
     timestamp: datetime
     status: Literal["ok", "error", "fallback"] = "ok"
     error_message: Optional[str] = None
@@ -202,10 +203,10 @@ def new_trace_event(
     input_summary: str = "",
     output_summary: str = "",
     tool_calls: Optional[List[str]] = None,
+    duration_ms: float = 0.0,
     status: Literal["ok", "error", "fallback"] = "ok",
     error_message: Optional[str] = None,
 ) -> TraceEvent:
-    """Convenience constructor so every node logs traces the same way."""
     return TraceEvent(
         event_id=str(uuid.uuid4()),
         agent=agent,
@@ -213,6 +214,7 @@ def new_trace_event(
         tool_calls=tool_calls or [],
         input_summary=input_summary,
         output_summary=output_summary,
+        duration_ms=duration_ms,
         timestamp=datetime.now(timezone.utc),
         status=status,
         error_message=error_message,

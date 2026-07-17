@@ -244,11 +244,12 @@ def analysis_node(state: FinAgentState) -> dict:
     logger.info("[analysis] Node entry: checking for normalized_event and passages")
 
     if event is None:
-        logger.warning("[analysis] Skipping: no normalized_event in state")
+        elapsed = time.perf_counter() - node_start
         trace = new_trace_event(
             agent=AgentName.ANALYSIS,
             action="skip_no_event",
             output_summary="no-op, no normalized_event in state",
+            duration_ms=round(elapsed * 1000, 2),
             status="fallback",
         )
         logger.debug(f"[analysis] Trace event: {trace.model_dump_json()}")
@@ -257,21 +258,10 @@ def analysis_node(state: FinAgentState) -> dict:
     passages = state.get("retrieved_passages", [])
     logger.info(f"[analysis] Passages available: {len(passages)}")
 
-    if not passages:
-        logger.warning("[analysis] Skipping: no retrieved passages (cannot ground hypothesis)")
-        trace = new_trace_event(
-            agent=AgentName.ANALYSIS,
-            action="skip_no_grounding",
-            input_summary=event.normalized_text[:80],
-            output_summary="no-op, retrieved_passages is empty - cannot ground a hypothesis",
-            status="fallback",
-        )
-        logger.debug(f"[analysis] Trace event: {trace.model_dump_json()}")
-        return {"trace_log": [trace]}
-
     output, status, error = _get_analysis_safe(event, passages)
 
     if output is None:
+        elapsed = time.perf_counter() - node_start
         logger.error(f"[analysis] LLM classification failed: {error}")
         trace = new_trace_event(
             agent=AgentName.ANALYSIS,
@@ -279,6 +269,7 @@ def analysis_node(state: FinAgentState) -> dict:
             tool_calls=["llm.analysis_classification (failed)"],
             input_summary=event.normalized_text[:80],
             output_summary="no-op, LLM classification failed",
+            duration_ms=round(elapsed * 1000, 2),
             status="error",
             error_message=error,
         )
@@ -288,7 +279,7 @@ def analysis_node(state: FinAgentState) -> dict:
             "errors": [f"analysis_agent: llm classification failed - {error}"],
         }
 
-    adjustment = _evidence_strength_adjustment(passages)
+    adjustment = _evidence_strength_adjustment(passages) if passages else 0
     final_confidence = _blend_confidence(output.confidence_score, adjustment)
     logger.debug(
         f"[analysis] Confidence adjustment: llm_score={output.confidence_score}, "
@@ -309,6 +300,8 @@ def analysis_node(state: FinAgentState) -> dict:
         source_event_id=event.event_id,
     )
 
+    elapsed = time.perf_counter() - node_start
+
     trace = new_trace_event(
         agent=AgentName.ANALYSIS,
         action="classify_and_generate_hypothesis",
@@ -321,10 +314,10 @@ def analysis_node(state: FinAgentState) -> dict:
             f"evidence_adjustment={adjustment:+d}, "
             f"final_confidence={final_confidence}"
         ),
+        duration_ms=round(elapsed * 1000, 2),
         status="ok",
     )
     
-    elapsed = time.perf_counter() - node_start
     logger.info(
         f"[analysis] Node exit: hypothesis_id={hypothesis.hypothesis_id}, "
         f"classification={hypothesis.classification.value}, "

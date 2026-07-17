@@ -8,6 +8,9 @@ Single source of truth for tunable constants used across the pipeline.
 from pathlib import Path
 import os
 import logging
+from dotenv import load_dotenv
+
+load_dotenv()
 
 # DEBUG -
 VERBOSE = True
@@ -45,6 +48,7 @@ TOP_K_DEFAULT = 3
 # or for offline processing.
 EMBEDDING_MODEL_NAME = "FinLang/finance-embeddings-investopedia"
 EMBEDDING_DEVICE = "cpu"  # set to "cuda" for GPU processing
+EMBEDDING_DIMENSION = 384  # embedding vector dimension
 
 # Vector store persistence
 
