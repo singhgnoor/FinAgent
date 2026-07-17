@@ -39,6 +39,7 @@ from typing import List, Optional, Tuple
 
 from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_community.retrievers import BM25Retriever
+from langchain_community.vectorstores.utils import DistanceStrategy
 from langchain_community.vectorstores import FAISS
 from langchain_core.documents import Document
 
@@ -99,7 +100,11 @@ class FinAgentVectorStore:
         logger.info(f"[vector_store] Adding {len(documents)} documents to index")
         if self._faiss_store is None:
             logger.debug("[vector_store] Creating new FAISS index")
-            self._faiss_store = FAISS.from_documents(documents, self._embeddings)
+            self._faiss_store = FAISS.from_documents(
+                                                documents,
+                                                self._embeddings,
+                                                distance_strategy=DistanceStrategy.COSINE
+            )
         else:
             logger.debug("[vector_store] Appending to existing FAISS index")
             self._faiss_store.add_documents(documents)
@@ -141,7 +146,9 @@ class FinAgentVectorStore:
         # allow_dangerous_deserialization: safe here because this only ever
         # loads an index this same app previously saved, never a third-party file.
         self._faiss_store = FAISS.load_local(
-            path, self._embeddings, allow_dangerous_deserialization=True
+            path, self._embeddings,
+            allow_dangerous_deserialization=True,
+            distance_strategy=DistanceStrategy.COSINE,
         )
         with open(docs_file, "rb") as f:
             self._documents = pickle.load(f)
