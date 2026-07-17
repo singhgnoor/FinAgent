@@ -1,5 +1,5 @@
 import { useState } from "react"
-import { Settings as SettingsIcon, Sun, Moon, Sliders, Cpu, Database, BookOpen } from "lucide-react"
+import { Sun, Moon, Sliders, Cpu, Database, BookOpen } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Label } from "@/components/ui/label"
 import { Slider } from "@/components/ui/slider"

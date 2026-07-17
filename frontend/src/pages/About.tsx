@@ -1,7 +1,6 @@
 import { Info, TrendingUp, Cpu, Database, GitBranch, Brain, FileText, Shield } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { Separator } from "@/components/ui/separator"
 import { PageHeader } from "@/components/shared/PageHeader"
 import { AnimatedCard } from "@/components/shared/AnimatedCard"
 
