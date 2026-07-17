@@ -9,3 +9,8 @@ temp.py
 temp.ipynb
 .opencode
 /tests
+
+# Data and report outputs
+data/reports/*.html
+data/reports/*.json
+data/price_history.json

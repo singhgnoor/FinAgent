@@ -13,7 +13,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # DEBUG -
-VERBOSE = True
+VERBOSE = False
 
 
 ## Dirs
@@ -63,8 +63,8 @@ CHARS_PER_TOKEN_ESTIMATE = 4            # rough heuristic to convert token targe
 
 # Hybrid retrieval (rag/vector_store.py)
 
-DENSE_TOP_K = 10          # candidates pulled from FAISS before fusion
-SPARSE_TOP_K = 10         # candidates pulled from BM25 before fusion
+DENSE_TOP_K = 20          # candidates pulled from FAISS before fusion
+SPARSE_TOP_K = 20         # candidates pulled from BM25 before fusion
 DENSE_WEIGHT = 0.6        # weight given to the dense retriever in RRF fusion
 SPARSE_WEIGHT = 0.4       # weight given to BM25 in RRF fusion — catches tickers, $ figures, exact terms
 FINAL_TOP_K = 5           # passages actually returned to the Analysis Agent
@@ -82,12 +82,19 @@ RECENCY_HALF_LIFE_DAYS = 30   # a doc this old has its recency factor halved
 RECENCY_WEIGHT = 0.25         # how much recency blends into the final score (0 = ignore, 1 = recency dominates)
 RECENCY_FLOOR = 0.35          # never discount relevance below this factor — old 10-Ks can still matter
 
+# Embedding (rag/vector_store.py)
+
+NORMALIZE_EMBEDDINGS = True
+FAISS_DISTANCE_STRATEGY = "cosine"  # "cosine" or "l2" (Euclidean) — must match the FAISS index type used in ingest.py
+
 # Cross-encoder reranking (rag/vector_store.py)
 
 ENABLE_RERANKING = True
 RERANK_MODEL_NAME = "cross-encoder/ms-marco-MiniLM-L-6-v2"
-RERANK_CANDIDATE_POOL = 8     # fused+recency-weighted candidates handed to the cross-encoder before truncating to FINAL_TOP_K
+RERANK_CANDIDATE_POOL = 20
 
+# Confidence gating (rag/vector_store.py)
+CONFIDENCE_THRESHOLD = 0.3    # sigmoid(cross-encoder logit) below this => flag as low-confidence
 
 if __name__ == '__main__':
     print(f"Project root : {BASE_DIR}")

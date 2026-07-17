@@ -15,3 +15,5 @@ python-multipart
 pandas
 yfinance
 python-dotenv
+yfinance
+pandas
