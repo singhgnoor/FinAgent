@@ -7,3 +7,8 @@ __pycache__/
 
 temp.py
 temp.ipynb
+
+# Data and report outputs
+data/reports/*.html
+data/reports/*.json
+data/price_history.json
