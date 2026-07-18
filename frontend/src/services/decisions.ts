@@ -6,6 +6,7 @@ export async function getDecisions(params?: {
   page_size?: number
   asset?: string
   action?: string
+  alerted?: boolean
 }): Promise<PaginatedResponse<DecisionHistoryEntry>> {
   const { data } = await api.get<PaginatedResponse<DecisionHistoryEntry>>('/decisions', { params })
   return data

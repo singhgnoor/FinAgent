@@ -147,6 +147,11 @@ export default function About() {
             </div>
           </CardContent>
         </AnimatedCard>
+
+        <AnimatedCard delay={0.4}>
+          <CardHeader><CardTitle>Development Team</CardTitle><CardDescription>The people building FinAgent</CardDescription></CardHeader>
+          <CardContent><div className="flex flex-wrap gap-2">{["Gurnoor Singh", "Parv Singla", "Anubhav"].map((name) => <Badge key={name} variant="outline" className="px-3 py-1">{name}</Badge>)}</div></CardContent>
+        </AnimatedCard>
       </div>
     </div>
   )

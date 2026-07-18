@@ -3,6 +3,7 @@ import shutil
 import tempfile
 import time
 import uuid
+import threading
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -21,6 +22,8 @@ router = APIRouter()
 
 DECISIONS_FILE = config.DATA_DIR / "decisions_history.json"
 SIGNALS_FILE = config.DATA_DIR / "signals_history.json"
+_JOBS: dict[str, dict] = {}
+_JOBS_LOCK = threading.Lock()
 
 
 def _persist_decision(artefact, state) -> None:
@@ -79,6 +82,58 @@ def _run_pipeline(
         )
 
 
+def _state_snapshot(state) -> dict:
+    """JSON-safe incremental view used by the polling UI."""
+    def dump(value):
+        return value.model_dump(mode="json") if value is not None else None
+    return {
+        "normalized_event": dump(state.get("normalized_event")),
+        "retrieved_passages": [dump(item) for item in state.get("retrieved_passages", [])],
+        "hypothesis": dump(state.get("hypothesis")),
+        "decision": dump(state.get("artefact")),
+        "trace_log": [dump(item) for item in state.get("trace_log", [])],
+        "errors": list(state.get("errors", [])),
+    }
+
+
+def _start_job(raw_signal: RawSignal, alert_threshold: int = 70) -> str:
+    """Run LangGraph in a worker and retain each graph-state transition.
+
+    `stream(..., values)` is deliberate: it exposes the actual state emitted
+    after every agent instead of manufacturing client-side progress.
+    """
+    job_id = str(uuid.uuid4())
+    with _JOBS_LOCK:
+        _JOBS[job_id] = {"job_id": job_id, "signal_id": raw_signal.raw_id, "status": "queued", "stage": "queued", "result": None, "error": None, "created_at": datetime.now(timezone.utc).isoformat()}
+
+    def worker():
+        started = time.perf_counter()
+        try:
+            from core.graph import get_compiled_graph
+            from core.state import create_initial_state
+            initial = create_initial_state(alert_threshold=alert_threshold)
+            initial["raw_signal"] = raw_signal
+            final_state = initial
+            for state in get_compiled_graph().stream(initial, stream_mode="values"):
+                final_state = state
+                trace = state.get("trace_log", [])
+                stage = trace[-1].agent.value if trace else "ingestion_agent"
+                with _JOBS_LOCK:
+                    _JOBS[job_id].update({"status": "running", "stage": stage, "result": _state_snapshot(state)})
+            artefact = final_state.get("artefact")
+            _persist_signal(raw_signal, final_state)
+            _persist_decision(artefact, final_state)
+            with _JOBS_LOCK:
+                _JOBS[job_id].update({"status": "completed", "stage": "completed", "result": _state_snapshot(final_state), "elapsed_ms": round((time.perf_counter() - started) * 1000, 2)})
+        except Exception as exc:
+            logger.exception("[signals] streamed pipeline error")
+            with _JOBS_LOCK:
+                _JOBS[job_id].update({"status": "failed", "stage": "failed", "error": str(exc), "elapsed_ms": round((time.perf_counter() - started) * 1000, 2)})
+
+    threading.Thread(target=worker, daemon=True, name=f"finagent-job-{job_id[:8]}").start()
+    return job_id
+
+
 @router.post("/process", response_model=PipelineResponse)
 def process_signal(req: SignalRequest):
     raw = RawSignal(
@@ -101,6 +156,47 @@ def process_price_tick(req: PriceTickRequest):
         received_at=datetime.now(timezone.utc),
     )
     return _run_pipeline(raw)
+
+
+@router.post("/price-tick/jobs")
+def process_price_tick_job(req: PriceTickRequest):
+    raw = RawSignal(raw_id=str(uuid.uuid4()), signal_type=SignalType.PRICE_TICK, source="api", payload=req.model_dump(mode="json"), received_at=datetime.now(timezone.utc))
+    return {"job_id": _start_job(raw), "signal_id": raw.raw_id}
+
+
+@router.post("/news/jobs")
+def process_news_job(req: NewsRequest):
+    raw = RawSignal(raw_id=str(uuid.uuid4()), signal_type=SignalType.NEWS_TEXT, source="api", payload=req.model_dump(exclude_none=True, mode="json"), received_at=datetime.now(timezone.utc))
+    return {"job_id": _start_job(raw), "signal_id": raw.raw_id}
+
+
+@router.get("/jobs/latest")
+def get_latest_job():
+    """Expose the most recently created job so the dashboard can reflect live work."""
+    with _JOBS_LOCK:
+        if not _JOBS:
+            return {"job": None}
+        job = max(_JOBS.values(), key=lambda item: item.get("created_at", ""))
+        return {"job": dict(job)}
+
+
+@router.get("/jobs/{job_id}")
+def get_job(job_id: str):
+    with _JOBS_LOCK:
+        job = _JOBS.get(job_id)
+        if job is None:
+            raise HTTPException(404, detail="Pipeline job not found")
+        return dict(job)
+
+
+@router.get("/market-data/{ticker}")
+def get_market_data(ticker: str):
+    """Use the existing yFinance integration to populate the OHLCV form."""
+    from core.ingestion_manager import fetch_live_yfinance_tick
+    raw = fetch_live_yfinance_tick(ticker)
+    if raw is None:
+        raise HTTPException(404, detail=f"No recent yFinance data for {ticker.upper()}; enter OHLCV manually.")
+    return {"ticker": ticker.upper(), "source": raw.source, **raw.payload}
 
 
 @router.post("/news", response_model=PipelineResponse)

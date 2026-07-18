@@ -1,4 +1,5 @@
-import { useState } from "react"
+import { useEffect, useState } from "react"
+import { useSearchParams } from "react-router-dom"
 import {
   GitBranch, CheckCircle2, XCircle, AlertTriangle, ArrowRight,
   Clock, Terminal, ChevronDown, ChevronRight
@@ -39,9 +40,16 @@ const statusColor = {
 }
 
 export default function TraceViewer() {
-  const { data: decisionsData } = useDecisions({ page_size: 50 })
-  const [selectedId, setSelectedId] = useState<string>("")
-  const { data: decision, isLoading } = useDecision(selectedId || undefined)
+  const [params] = useSearchParams()
+  const { data: decisionsData, isError: decisionsFailed, error: decisionsError } = useDecisions({ page_size: 100 })
+  const [selectedId, setSelectedId] = useState<string>(params.get("decision") || "")
+  const { data: decision, isLoading, isError: traceFailed, error: traceError } = useDecision(selectedId || undefined)
+
+  useEffect(() => {
+    if (selectedId || !decisionsData?.items) return
+    const latestWithTrace = decisionsData.items.find((item) => item.trace_log?.length)
+    if (latestWithTrace) setSelectedId(latestWithTrace.artefact_id)
+  }, [decisionsData, selectedId])
 
   const trace: TraceEvent[] = decision?.trace_log || []
 
@@ -75,7 +83,10 @@ export default function TraceViewer() {
         </AnimatedCard>
       </div>
 
-      {isLoading ? (
+      {decisionsFailed && <EmptyState title="Could not load traces" description={(decisionsError as Error)?.message || "The decision API did not respond."} />}
+      {traceFailed && <EmptyState title="Could not load this trace" description={(traceError as Error)?.message || "The selected decision could not be retrieved."} />}
+
+      {!decisionsFailed && !traceFailed && isLoading ? (
         <div className="space-y-4">
           {Array.from({ length: 4 }).map((_, i) => (
             <Skeleton key={i} className="h-32 w-full" />
@@ -157,6 +168,15 @@ function TraceEventCard({ event, index }: { event: TraceEvent; index: number }) 
       {expanded && (
         <CardContent>
           <div className="space-y-4">
+            <div>
+              <h5 className="text-xs font-medium text-muted-foreground mb-1">Timestamp / action</h5>
+              <p className="text-xs">{event.timestamp ? new Date(event.timestamp).toLocaleString() : "No timestamp"}{event.action ? ` · ${event.action}` : ""}</p>
+            </div>
+            <div>
+              <h5 className="text-xs font-medium text-muted-foreground mb-1">Tool calls</h5>
+              <p className="text-xs">{event.tool_calls?.length ? event.tool_calls.join(", ") : "No external tool call recorded"}</p>
+            </div>
+            {event.error_message && <div className="rounded border border-destructive/40 bg-destructive/10 p-2 text-xs text-destructive">{event.error_message}</div>}
             <div>
               <h5 className="text-xs font-medium text-muted-foreground mb-1">Input</h5>
               <div className="rounded-md bg-muted/50 p-3">

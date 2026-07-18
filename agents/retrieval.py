@@ -133,6 +133,7 @@ def _fallback_passages(event: NormalizedEvent) -> List[RetrievedPassage]:
                 retrieved_at=now,
                 source_type="fallback_generic",
                 grounded=False,
+                metadata={"kind": "generated_fallback", "asset": asset, "framework": "technical_analysis"},
             ),
             RetrievedPassage(
                 passage_id=str(uuid.uuid4()),
@@ -146,6 +147,7 @@ def _fallback_passages(event: NormalizedEvent) -> List[RetrievedPassage]:
                 retrieved_at=now,
                 source_type="fallback_generic",
                 grounded=False,
+                metadata={"kind": "generated_fallback", "asset": asset, "framework": "market_microstructure"},
             ),
             RetrievedPassage(
                 passage_id=str(uuid.uuid4()),
@@ -159,6 +161,7 @@ def _fallback_passages(event: NormalizedEvent) -> List[RetrievedPassage]:
                 retrieved_at=now,
                 source_type="fallback_generic",
                 grounded=False,
+                metadata={"kind": "generated_fallback", "asset": asset, "framework": "risk_management"},
             ),
         ]
 
@@ -175,6 +178,7 @@ def _fallback_passages(event: NormalizedEvent) -> List[RetrievedPassage]:
             retrieved_at=now,
             source_type="fallback_generic",
             grounded=False,
+            metadata={"kind": "generated_fallback", "asset": asset, "framework": "fundamental_analysis"},
         ),
         RetrievedPassage(
             passage_id=str(uuid.uuid4()),
@@ -188,6 +192,7 @@ def _fallback_passages(event: NormalizedEvent) -> List[RetrievedPassage]:
             retrieved_at=now,
             source_type="fallback_generic",
             grounded=False,
+            metadata={"kind": "generated_fallback", "asset": asset, "framework": "sentiment_analysis"},
         ),
     ]
 

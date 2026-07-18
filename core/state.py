@@ -151,6 +151,7 @@ class RetrievedPassage(BaseModel):
     # evidence.  Fallback passages deliberately carry a different source type.
     source_type: Literal["kb_retrieved", "fallback_generic"] = "kb_retrieved"
     grounded: bool = True
+    metadata: Dict[str, Any] = Field(default_factory=dict)
 
 @dataclass
 class RAGQuery:

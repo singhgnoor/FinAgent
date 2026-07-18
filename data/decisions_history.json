@@ -1,90 +1,426 @@
 [
   {
-    "artefact_id": "ddb7ef59-646f-4ed3-be2b-e11737e3102b",
-    "asset": "BTC/USD",
+    "artefact_id": "sample-hdfc-001",
+    "asset": "HDFC",
     "action": "BUY",
-    "confidence_score": 61,
-    "confidence_level": "Medium",
-    "evidence_bullets": [
-      "Current Price (Close): 676.0",
-      "20-period Simple Moving Average (SMA): 492.00",
-      "14-period Relative Strength Index (RSI): 65.28"
-    ],
-    "risk_flags": [
-      "The setup relies on only one brief technical snapshot; there is no confirmation from higher-timeframe trend, volume, volatility, or support/resistance structure.",
-      "Price is already far above the 20-period SMA, which can reflect an extended move rather than a durable trend and raises the risk of mean reversion or consolidation.",
-      "RSI at 65.28 is positive but close enough to overbought territory that a small continuation could quickly turn into a momentum exhaustion signal.",
-      "No evidence is provided on recent candles, breakout quality, or market regime, so the bullish bias may be overstated if this is a low-liquidity or news-driven spike."
-    ],
-    "llm_commentary": "Treat this as a tentative short-term bullish read, not a high-conviction signal. The technical edge is real but thin, and the lack of broader context means a trader should be ready for a pullback or chop even if the directional bias remains upward.",
-    "created_at": "2026-07-17T17:22:32.012872Z",
-    "alert_triggered": false,
-    "source_hypothesis_id": "a8e31abe-0e34-4df6-acab-c8dabc366699"
-  },
-  {
-    "artefact_id": "0700ee89-136f-4e12-bc2a-b6cb946759cf",
-    "asset": "BTC/USD",
-    "action": "SELL",
-    "confidence_score": 62,
-    "confidence_level": "Medium",
-    "evidence_bullets": [
-      "[225212ad-7d67-42b2-a0b1-31d6366b6f08] Price is trading below the 20-period SMA of 401.50.",
-      "[225212ad-7d67-42b2-a0b1-31d6366b6f08] RSI(14) of 33.5 suggests neutral territory.",
-      "[225212ad-7d67-42b2-a0b1-31d6366b6f08] Traders often interpret high volume breakouts above resistance as confirmation of momentum, while low volume moves above moving averages may indicate weak follow-through."
-    ],
-    "risk_flags": [
-      "The price/SMA relationship is unusually extreme (130.0 vs 401.50); this may reflect a data anomaly, stale SMA window, or a regime break rather than a clean bearish trend signal.",
-      "RSI at 33.5 is near oversold and does not confirm fresh downside momentum; a short-term bounce or mean reversion remains plausible.",
-      "The case relies on a single bar and lacks volume confirmation, so the bearish signal may not have follow-through.",
-      "No broader market or higher-timeframe context is provided; BTC can diverge sharply from short-term technicals when macro or liquidity conditions shift."
-    ],
-    "llm_commentary": "Treat this as a lower-confidence bearish setup until the price/indicator inputs are verified and follow-through is seen on volume. The current evidence supports downside risk, but the extreme gap to the moving average and lack of confirmation make it vulnerable to a sharp reversal.",
-    "created_at": "2026-07-17T17:27:43.711664Z",
-    "alert_triggered": false,
-    "source_hypothesis_id": "e60130d6-5bd7-4d22-badf-78780b97ea9e"
-  },
-  {
-    "artefact_id": "e254db60-7798-4865-a63c-36c62d47e689",
-    "asset": "BTC/USD",
-    "action": "BUY",
-    "confidence_score": 72,
+    "confidence_score": 78,
     "confidence_level": "High",
     "evidence_bullets": [
-      "Price at 1300.0 with volume of 10000.",
-      "RSI(14) of 67.5 suggests neutral territory.",
-      "Price is trading above the 20-period SMA of 581.20."
+      "Price is holding above the short-term moving average.",
+      "Banking-sector context is positive."
     ],
     "risk_flags": [
-      "The price-to-SMA gap is extremely large (1300 vs 581.2), which is unusual for a short-term continuation setup and may indicate a data issue, a regime shift, or a late-stage move rather than a clean breakout.",
-      "RSI at 67.5 is close to overbought, not truly neutral; that reduces room for upside follow-through and raises the odds of near-term mean reversion.",
-      "The rationale relies on a single price bar and does not show trend persistence, recent resistance levels, or multi-bar confirmation, so the breakout signal may be fragile.",
-      "Volume is labeled 'high enough to matter' but no baseline/relative volume is provided, making it hard to judge whether the move is genuinely confirming or just noisy."
+      "Sample decision \u00e2\u20ac\u201d validate against current market data."
     ],
-    "llm_commentary": "Treat this as a tentative bullish bias rather than strong confirmation. Before acting, verify the price and SMA inputs, check whether the move is supported by multiple candles and relative volume, and be cautious that the trade may already be extended.",
-    "created_at": "2026-07-17T17:29:22.178078Z",
+    "llm_commentary": "Sample HDFC decision for the Indian-equities demo scope.",
+    "created_at": "2026-07-19T09:00:00Z",
     "alert_triggered": true,
-    "source_hypothesis_id": "5423d1ae-8701-42d3-b091-7435c4c3a21b"
+    "source_hypothesis_id": "sample-hdfc-hypothesis",
+    "trace_log": [],
+    "errors": []
   },
   {
-    "artefact_id": "c3d73343-369f-4ea0-a884-0444214aa858",
+    "artefact_id": "sample-tcs-001",
     "asset": "TCS",
     "action": "WATCH",
-    "confidence_score": 69,
+    "confidence_score": 64,
     "confidence_level": "Medium",
     "evidence_bullets": [
-      "Current price (2211.0) is equal to the 20-period SMA (2211.00), indicating a neutral technical position.",
-      "RSI is 50.00, which is neither overbought nor oversold.",
-      "Daily range is narrow at 2210.0-2213.0, showing limited intraday volatility."
+      "Momentum is neutral near the moving average.",
+      "Await a confirmed breakout before acting."
     ],
     "risk_flags": [
-      "The technical inputs are extremely compressed: price, 20-period SMA, and RSI are all effectively flat/neutral, so the setup may simply reflect stale data rather than a reliable range-bound signal.",
-      "The intraday range of 2210-2213 is very narrow, which can make the apparent 'balance' fragile; a small order-flow imbalance could still trigger a breakout or breakdown.",
-      "The supporting passages are mostly long-term business narrative and do not validate the absence of near-term catalysts such as results, guidance, block deals, or sector news.",
-      "A confidence score of 69/100 looks somewhat high relative to the thin evidence base; the hypothesis may be overconfident given the lack of catalyst and limited price discovery."
+      "Sample decision \u00e2\u20ac\u201d validate against current market data."
     ],
-    "llm_commentary": "Treat this as a low-conviction neutrality read, not a strong forecast. Before acting, verify whether any market-moving event, index rebalancing, or sector-wide news is pending that could invalidate the range-bound assumption.",
-    "created_at": "2026-07-18T17:47:22.665543Z",
+    "llm_commentary": "Sample TCS decision for the Indian-equities demo scope.",
+    "created_at": "2026-07-19T08:30:00Z",
     "alert_triggered": false,
-    "source_hypothesis_id": "ee7fd9f3-4449-41e2-b5e6-d776b7cb8e48"
+    "source_hypothesis_id": "sample-tcs-hypothesis",
+    "trace_log": [],
+    "errors": []
+  },
+  {
+    "artefact_id": "sample-infosys-001",
+    "asset": "Infosys",
+    "action": "HOLD",
+    "confidence_score": 52,
+    "confidence_level": "Medium",
+    "evidence_bullets": [
+      "The current signal is mixed.",
+      "No sufficiently strong catalyst is present."
+    ],
+    "risk_flags": [
+      "Sample decision \u00e2\u20ac\u201d validate against current market data."
+    ],
+    "llm_commentary": "Sample Infosys decision for the Indian-equities demo scope.",
+    "created_at": "2026-07-19T08:00:00Z",
+    "alert_triggered": false,
+    "source_hypothesis_id": "sample-infosys-hypothesis",
+    "trace_log": [],
+    "errors": []
+  },
+  {
+    "artefact_id": "53daf5d4-ea13-4515-bb6d-9fd28354018f",
+    "asset": "TCS.NS",
+    "action": "WATCH",
+    "confidence_score": 38,
+    "confidence_level": "Low",
+    "evidence_bullets": [
+      "Current Price (Close) 2214.0 is equal to the 20-period SMA of 2214.00.",
+      "14-period RSI is 50.00, indicating neutral momentum rather than overbought or oversold conditions.",
+      "Daily range is narrow at 2210.0 - 2218.0 and the open was 2213.0, consistent with little intraday direction."
+    ],
+    "risk_flags": [
+      "The setup relies almost entirely on price/indicator neutrality; a flat close at the 20-SMA and RSI 50 can also occur during pre-breakout consolidation, so mean-reversion is not the only plausible intraday outcome.",
+      "The daily range is extremely tight, but no volume, order-flow, or market breadth data is provided; low-range conditions without volume context can mask an imminent directional expansion.",
+      "The supporting text is non-catalytic and mostly glossary material, so the absence of a news catalyst is inferred from incomplete retrieval rather than confirmed by a comprehensive news scan.",
+      "Confidence is low (38/100), which is appropriate for a neutral read, but the hypothesis may understate event risk if there are unsurfaced company/sector or index-driven flows during the session."
+    ],
+    "llm_commentary": "Treat this as a weak neutrality signal, not a strong mean-reversion edge. Without volume and fresh news confirmation, the stock could just as easily be coiling for a breakout as it could remain range-bound.",
+    "created_at": "2026-07-18T19:08:32.032205Z",
+    "alert_triggered": false,
+    "source_hypothesis_id": "a8f1dd8b-7f36-4bc7-8fae-30dbdcba2f1c"
+  },
+  {
+    "artefact_id": "7f1e9517-5544-4060-85b7-7e4017a12619",
+    "asset": "TCS",
+    "action": "WATCH",
+    "confidence_score": 39,
+    "confidence_level": "Low",
+    "evidence_bullets": [
+      "Price at 3910.0 with volume of 100000.",
+      "RSI(14) of 50.0 suggests neutral territory.",
+      "Price is trading below the 20-period SMA of 3910.00."
+    ],
+    "risk_flags": [
+      "The evidence is internally inconsistent on trend location: price is described as at the 20-period SMA (3910) but also as trading below it, which weakens confidence in the setup interpretation.",
+      "The signal is based on a single intraday bar with no follow-through; that makes the range-bound reading fragile and easy to invalidate by the next print.",
+      "Volume is given as 100,000, but there is no comparison to typical or relative volume, so 'no breakout' cannot be confirmed from the data provided.",
+      "The daily range is narrow, but there is no information on broader market/sector context or higher-timeframe levels, which could make the apparent neutrality misleading.",
+      "One or more hypotheses used non-KB fallback context; confidence capped."
+    ],
+    "llm_commentary": "This looks more like an absence of evidence than evidence of a durable neutral regime, and the inconsistent SMA description reduces trust in the technical read. Treat as low-conviction until price confirms direction with relative volume and follow-through beyond the current range.",
+    "created_at": "2026-07-18T19:17:15.207602Z",
+    "alert_triggered": false,
+    "source_hypothesis_id": "542e29e7-786e-49c5-8df5-325ce51df33a",
+    "source_hypothesis_ids": [
+      "542e29e7-786e-49c5-8df5-325ce51df33a"
+    ],
+    "trace_log": [
+      {
+        "event_id": "08b9005c-899f-4fbb-9f6b-74a9830ad760",
+        "agent": "ingestion_agent",
+        "action": "normalize_signal",
+        "tool_calls": [],
+        "input_summary": "raw_signal type=price_tick",
+        "output_summary": "normalized_event id=283df1e2-c240-4919-975d-0100823a1ba1, asset=TCS, text=TICK for TCS: close=3910.0, volume=100000.0, MA(20",
+        "duration_ms": 1.83,
+        "timestamp": "2026-07-18T19:17:07.757867Z",
+        "status": "ok",
+        "error_message": null
+      },
+      {
+        "event_id": "13331d0a-baff-4b53-90c8-241e4c665ea8",
+        "agent": "retrieval_agent",
+        "action": "similarity_search",
+        "tool_calls": [
+          "vector_store.retrieve"
+        ],
+        "input_summary": "TCS financial performance, valuation, and business outlook. Current technical context: price is below its moving average, showing neutral RSI momentum, on volume of 100000. Relevant considerations: growth drivers, risk factors, sector positioning, and how comparable price action has historically resolved.",
+        "output_summary": "3 fallback (non-KB) passages",
+        "duration_ms": 1147.71,
+        "timestamp": "2026-07-18T19:17:08.909558Z",
+        "status": "fallback",
+        "error_message": "Knowledge base returned no matching passages"
+      },
+      {
+        "event_id": "df27fd39-bc1c-4889-a8af-b43eb19310ba",
+        "agent": "analysis_agent",
+        "action": "classify_and_generate_hypothesis",
+        "tool_calls": [
+          "retrieval_agent.query (via state)",
+          "llm.analysis_classification"
+        ],
+        "input_summary": "TICK for TCS: close=3910.0, volume=100000.0, MA(20)=3910.00, RSI(14)=50.00",
+        "output_summary": "hypothesis id=542e29e7-786e-49c5-8df5-325ce51df33a, classification=neutral, llm_confidence=84, evidence_adjustment=+0, final_confidence=39",
+        "duration_ms": 2975.95,
+        "timestamp": "2026-07-18T19:17:11.886555Z",
+        "status": "fallback",
+        "error_message": "Hypothesis confidence capped: retrieval used non-KB fallback content."
+      },
+      {
+        "event_id": "2a832aa7-e442-4805-a8f7-d706cedf8f26",
+        "agent": "decision_agent",
+        "action": "synthesize_artefact",
+        "tool_calls": [
+          "llm.decision_advice"
+        ],
+        "input_summary": "hypothesis id=542e29e7-786e-49c5-8df5-325ce51df33a",
+        "output_summary": "artefact id=7f1e9517-5544-4060-85b7-7e4017a12619, action=WATCH, alert=False",
+        "duration_ms": 3319.55,
+        "timestamp": "2026-07-18T19:17:15.207690Z",
+        "status": "ok",
+        "error_message": null
+      }
+    ],
+    "errors": [
+      "retrieval_agent: knowledge base returned no matching passages",
+      "analysis_agent: hypothesis is not KB-grounded; confidence capped."
+    ],
+    "hypothesis": {
+      "hypothesis_id": "542e29e7-786e-49c5-8df5-325ce51df33a",
+      "asset": "TCS",
+      "classification": "neutral",
+      "rationale": "The technical setup is balanced: TCS is trading at 3910, exactly at its 20-period SMA, with RSI at 50, which indicates neutral momentum. The daily range and open do not show a clear breakout or breakdown, and the passages explicitly note that a single price bar provides limited signal without follow-through confirmation.",
+      "statement": "TCS appears range-bound and directionally undecided; without a confirmed breakout on strong volume or additional follow-through, the current setup is better treated as neutral than as a high-conviction trade.",
+      "supporting_evidence": [
+        "Price at 3910.0 with volume of 100000.",
+        "RSI(14) of 50.0 suggests neutral territory.",
+        "Price is trading below the 20-period SMA of 3910.00.",
+        "Daily range: 3880.0 - 3925.0 on open of 3900.0.",
+        "A single price bar provides limited signal; confirmation from volume, follow-through in subsequent sessions, and alignment with broader market structure increases reliability of any directional view."
+      ],
+      "time_horizon": "intraday",
+      "confidence_score": 39,
+      "grounding_passage_ids": [
+        "b4b2d07e-d4ab-4af9-bf74-eb18f2382d29",
+        "ba0d5438-2397-419a-b7bd-a9979a98fb93",
+        "be132529-b068-4e9a-a637-8ee8fcdec008"
+      ],
+      "created_at": "2026-07-18T19:17:11.886503Z",
+      "source_event_id": "283df1e2-c240-4919-975d-0100823a1ba1",
+      "grounded": false
+    },
+    "retrieved_passages": [
+      {
+        "passage_id": "b4b2d07e-d4ab-4af9-bf74-eb18f2382d29",
+        "text": "Technical analysis of TCS: Price at 3910.0 with volume of 100000. The RSI(14) of 50.0 suggests neutral territory. Price is trading below the 20-period SMA of 3910.00. Daily range: 3880.0 - 3925.0 on open of 3900.0. Traders often interpret high volume breakouts above resistance as confirmation of momentum, while low volume moves above moving averages may indicate weak follow-through.",
+        "source_document": "technical_analysis_framework",
+        "section_reference": "Price Action & Momentum Indicators",
+        "similarity_score": 0.75,
+        "retrieved_at": "2026-07-18T19:17:08.909426Z",
+        "source_type": "fallback_generic",
+        "grounded": false
+      },
+      {
+        "passage_id": "ba0d5438-2397-419a-b7bd-a9979a98fb93",
+        "text": "Market context for TCS: Financial markets price assets based on discounted future cash flows. Short-term price movements are driven by order flow, sentiment, and positioning rather than fundamentals. A single price bar provides limited signal; confirmation from volume, follow-through in subsequent sessions, and alignment with broader market structure increases reliability of any directional view.",
+        "source_document": "market_microstructure_primer",
+        "section_reference": "Signal Reliability & Confirmation",
+        "similarity_score": 0.65,
+        "retrieved_at": "2026-07-18T19:17:08.909426Z",
+        "source_type": "fallback_generic",
+        "grounded": false
+      },
+      {
+        "passage_id": "be132529-b068-4e9a-a637-8ee8fcdec008",
+        "text": "Risk management guideline for TCS: Position sizing should account for the current price's distance from key support/resistance levels. When RSI is in neutral range (30-70), directional bias carries moderate conviction. Traders typically set stops below the recent swing low for long positions. Volume analysis helps distinguish genuine breakouts from noise.",
+        "source_document": "risk_management_framework",
+        "section_reference": "Position Sizing & Stop Placement",
+        "similarity_score": 0.6,
+        "retrieved_at": "2026-07-18T19:17:08.909426Z",
+        "source_type": "fallback_generic",
+        "grounded": false
+      }
+    ],
+    "normalized_event": {
+      "event_id": "283df1e2-c240-4919-975d-0100823a1ba1",
+      "event_type": "price_tick",
+      "asset": "TCS",
+      "source": "api",
+      "timestamp": "2026-07-18T19:17:07.715569Z",
+      "ingested_at": "2026-07-18T19:17:07.756347Z",
+      "normalized_text": "TICK for TCS: close=3910.0, volume=100000.0, MA(20)=3910.00, RSI(14)=50.00",
+      "price_data": {
+        "open": 3900.0,
+        "high": 3925.0,
+        "low": 3880.0,
+        "close": 3910.0,
+        "volume": 100000.0,
+        "moving_average": 3910.0,
+        "rsi": 50.0
+      },
+      "text_data": null,
+      "document_data": null
+    }
+  },
+  {
+    "artefact_id": "294bbc27-83d6-4e4d-85e0-5b64df6e2405",
+    "asset": "INFY",
+    "action": "WATCH",
+    "confidence_score": 39,
+    "confidence_level": "Low",
+    "evidence_bullets": [
+      "Passage 907da5bf-0616-409f-a686-ef39ce7e0fa8: RSI(14) of 50.0 suggests neutral territory.",
+      "Passage 907da5bf-0616-409f-a686-ef39ce7e0fa8: Price is trading below the 20-period SMA of 1610.00 (and current price is 1610.0).",
+      "Passage 907da5bf-0616-409f-a686-ef39ce7e0fa8: Daily range is 1595.0 - 1620.0 on open of 1600.0, indicating no decisive breakout in the retrieved context."
+    ],
+    "risk_flags": [
+      "Price is described as trading below the 20-period SMA of 1610.00 while the current price is also listed as 1610.0, a small inconsistency that weakens the technical read and suggests the signal may be rounding noise rather than a real edge.",
+      "The evidence set is internally flat: RSI(14) at 50 and the daily range of 1595-1620 both indicate indecision, so the 'range-bound' conclusion may simply reflect lack of signal rather than a tradable setup.",
+      "No actual volume data, breakout confirmation, or follow-through bars are provided, despite the note that these are required to validate intraday momentum; this materially lowers confidence.",
+      "The confidence score is only 39/100, which is consistent with the sparse evidence and should be treated as a weak hypothesis, not a setup.",
+      "One or more hypotheses used non-KB fallback context; confidence capped."
+    ],
+    "llm_commentary": "This looks more like an observation of uncertainty than a tradable edge. For an intraday momentum trade, wait for explicit confirmation from volume and a clean break of the stated range; otherwise the risk of a false move is high.",
+    "created_at": "2026-07-18T19:26:03.593643Z",
+    "alert_triggered": false,
+    "source_hypothesis_id": "c100ecb4-0a56-4090-bf96-79ad6a09d33a",
+    "source_hypothesis_ids": [
+      "c100ecb4-0a56-4090-bf96-79ad6a09d33a"
+    ],
+    "trace_log": [
+      {
+        "event_id": "21860d32-7fdf-45bf-bc55-cf450d0f896b",
+        "agent": "ingestion_agent",
+        "action": "normalize_signal",
+        "tool_calls": [],
+        "input_summary": "raw_signal type=price_tick",
+        "output_summary": "normalized_event id=9b968846-f718-4897-9766-885bbfc6053d, asset=INFY, text=TICK for INFY: close=1610.0, volume=50000.0, MA(20",
+        "duration_ms": 2.83,
+        "timestamp": "2026-07-18T19:25:56.130201Z",
+        "status": "ok",
+        "error_message": null
+      },
+      {
+        "event_id": "213ff5de-d2df-4b84-90ea-4d90ae1fe401",
+        "agent": "retrieval_agent",
+        "action": "similarity_search",
+        "tool_calls": [
+          "vector_store.retrieve"
+        ],
+        "input_summary": "INFY financial performance, valuation, and business outlook. Current technical context: price is below its moving average, showing neutral RSI momentum, on volume of 50000. Relevant considerations: growth drivers, risk factors, sector positioning, and how comparable price action has historically resolved.",
+        "output_summary": "3 fallback (non-KB) passages",
+        "duration_ms": 313.5,
+        "timestamp": "2026-07-18T19:25:56.446364Z",
+        "status": "fallback",
+        "error_message": "Knowledge base returned no matching passages"
+      },
+      {
+        "event_id": "e3e3bdeb-12f6-4e88-b8db-cd7a02ba015a",
+        "agent": "analysis_agent",
+        "action": "classify_and_generate_hypothesis",
+        "tool_calls": [
+          "retrieval_agent.query (via state)",
+          "llm.analysis_classification"
+        ],
+        "input_summary": "TICK for INFY: close=1610.0, volume=50000.0, MA(20)=1610.00, RSI(14)=50.00",
+        "output_summary": "hypothesis id=c100ecb4-0a56-4090-bf96-79ad6a09d33a, classification=neutral, llm_confidence=79, evidence_adjustment=+0, final_confidence=39",
+        "duration_ms": 4419.14,
+        "timestamp": "2026-07-18T19:26:00.869829Z",
+        "status": "fallback",
+        "error_message": "Hypothesis confidence capped: retrieval used non-KB fallback content."
+      },
+      {
+        "event_id": "59e8962a-517b-4a9d-bc1d-e69fb877e101",
+        "agent": "decision_agent",
+        "action": "synthesize_artefact",
+        "tool_calls": [
+          "llm.decision_advice"
+        ],
+        "input_summary": "hypothesis id=c100ecb4-0a56-4090-bf96-79ad6a09d33a",
+        "output_summary": "artefact id=294bbc27-83d6-4e4d-85e0-5b64df6e2405, action=WATCH, alert=False",
+        "duration_ms": 2721.6,
+        "timestamp": "2026-07-18T19:26:03.593718Z",
+        "status": "ok",
+        "error_message": null
+      }
+    ],
+    "errors": [
+      "retrieval_agent: knowledge base returned no matching passages",
+      "analysis_agent: hypothesis is not KB-grounded; confidence capped."
+    ],
+    "hypothesis": {
+      "hypothesis_id": "c100ecb4-0a56-4090-bf96-79ad6a09d33a",
+      "asset": "INFY",
+      "classification": "neutral",
+      "rationale": "The technicals are mixed: INFY is at 1610 with RSI 50, which indicates neutral momentum, and price is exactly at the 20-period SMA of 1610. The passages do not show a confirmed breakout or breakdown, and the microstructure note explicitly says a single price bar has limited signal without follow-through. Evidence is therefore insufficient for a strong bullish or bearish read.",
+      "statement": "INFY appears range-bound with no clear directional edge; wait for confirmation above resistance or below support before taking a momentum trade.",
+      "supporting_evidence": [
+        "Passage 907da5bf-0616-409f-a686-ef39ce7e0fa8: RSI(14) of 50.0 suggests neutral territory.",
+        "Passage 907da5bf-0616-409f-a686-ef39ce7e0fa8: Price is trading below the 20-period SMA of 1610.00 (and current price is 1610.0).",
+        "Passage 907da5bf-0616-409f-a686-ef39ce7e0fa8: Daily range is 1595.0 - 1620.0 on open of 1600.0, indicating no decisive breakout in the retrieved context.",
+        "Passage d5a1add7-88a9-4d39-8982-af055a22b613: A single price bar provides limited signal; confirmation from volume, follow-through in subsequent sessions, and alignment with broader market structure increases reliability of any directional view.",
+        "Passage d2e7d918-0123-4dce-89a6-f9ab09143887: When RSI is in neutral range (30-70), directional bias carries moderate conviction.",
+        "Passage 907da5bf-0616-409f-a686-ef39ce7e0fa8: Traders often interpret high volume breakouts above resistance as confirmation of momentum, while low volume moves above moving averages may indicate weak follow-through."
+      ],
+      "time_horizon": "intraday",
+      "confidence_score": 39,
+      "grounding_passage_ids": [
+        "907da5bf-0616-409f-a686-ef39ce7e0fa8",
+        "d5a1add7-88a9-4d39-8982-af055a22b613",
+        "d2e7d918-0123-4dce-89a6-f9ab09143887"
+      ],
+      "created_at": "2026-07-18T19:26:00.869775Z",
+      "source_event_id": "9b968846-f718-4897-9766-885bbfc6053d",
+      "grounded": false
+    },
+    "retrieved_passages": [
+      {
+        "passage_id": "907da5bf-0616-409f-a686-ef39ce7e0fa8",
+        "text": "Technical analysis of INFY: Price at 1610.0 with volume of 50000. The RSI(14) of 50.0 suggests neutral territory. Price is trading below the 20-period SMA of 1610.00. Daily range: 1595.0 - 1620.0 on open of 1600.0. Traders often interpret high volume breakouts above resistance as confirmation of momentum, while low volume moves above moving averages may indicate weak follow-through.",
+        "source_document": "technical_analysis_framework",
+        "section_reference": "Price Action & Momentum Indicators",
+        "similarity_score": 0.75,
+        "retrieved_at": "2026-07-18T19:25:56.445639Z",
+        "source_type": "fallback_generic",
+        "grounded": false,
+        "metadata": {
+          "kind": "generated_fallback",
+          "asset": "INFY",
+          "framework": "technical_analysis"
+        }
+      },
+      {
+        "passage_id": "d5a1add7-88a9-4d39-8982-af055a22b613",
+        "text": "Market context for INFY: Financial markets price assets based on discounted future cash flows. Short-term price movements are driven by order flow, sentiment, and positioning rather than fundamentals. A single price bar provides limited signal; confirmation from volume, follow-through in subsequent sessions, and alignment with broader market structure increases reliability of any directional view.",
+        "source_document": "market_microstructure_primer",
+        "section_reference": "Signal Reliability & Confirmation",
+        "similarity_score": 0.65,
+        "retrieved_at": "2026-07-18T19:25:56.445639Z",
+        "source_type": "fallback_generic",
+        "grounded": false,
+        "metadata": {
+          "kind": "generated_fallback",
+          "asset": "INFY",
+          "framework": "market_microstructure"
+        }
+      },
+      {
+        "passage_id": "d2e7d918-0123-4dce-89a6-f9ab09143887",
+        "text": "Risk management guideline for INFY: Position sizing should account for the current price's distance from key support/resistance levels. When RSI is in neutral range (30-70), directional bias carries moderate conviction. Traders typically set stops below the recent swing low for long positions. Volume analysis helps distinguish genuine breakouts from noise.",
+        "source_document": "risk_management_framework",
+        "section_reference": "Position Sizing & Stop Placement",
+        "similarity_score": 0.6,
+        "retrieved_at": "2026-07-18T19:25:56.445639Z",
+        "source_type": "fallback_generic",
+        "grounded": false,
+        "metadata": {
+          "kind": "generated_fallback",
+          "asset": "INFY",
+          "framework": "risk_management"
+        }
+      }
+    ],
+    "normalized_event": {
+      "event_id": "9b968846-f718-4897-9766-885bbfc6053d",
+      "event_type": "price_tick",
+      "asset": "INFY",
+      "source": "api",
+      "timestamp": "2026-07-18T19:25:56.083400Z",
+      "ingested_at": "2026-07-18T19:25:56.127735Z",
+      "normalized_text": "TICK for INFY: close=1610.0, volume=50000.0, MA(20)=1610.00, RSI(14)=50.00",
+      "price_data": {
+        "open": 1600.0,
+        "high": 1620.0,
+        "low": 1595.0,
+        "close": 1610.0,
+        "volume": 50000.0,
+        "moving_average": 1610.0,
+        "rsi": 50.0
+      },
+      "text_data": null,
+      "document_data": null
+    }
   }
 ]

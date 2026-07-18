@@ -47,11 +47,10 @@ const reducer = (state: State, action: Action): State => {
       return { ...state, toasts: [action.toast, ...state.toasts].slice(0, TOAST_LIMIT) }
     case "DISMISS_TOAST": {
       const { toastId } = action
-      addToRemoveQueue(toastId)
-      return {
-        ...state,
-        toasts: state.toasts.map((t) => (t.id === toastId ? { ...t } : t)),
-      }
+      const timeout = toastTimeouts.get(toastId)
+      if (timeout) clearTimeout(timeout)
+      toastTimeouts.delete(toastId)
+      return { ...state, toasts: state.toasts.filter((t) => t.id !== toastId) }
     }
     case "REMOVE_TOAST":
       if (action.toastId === "all") {

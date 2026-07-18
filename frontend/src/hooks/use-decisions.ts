@@ -6,6 +6,7 @@ export function useDecisions(params?: {
   page_size?: number
   asset?: string
   action?: string
+  alerted?: boolean
 }) {
   return useQuery({
     queryKey: ['decisions', params],

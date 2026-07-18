@@ -11,10 +11,14 @@ DECISIONS_FILE = config.DATA_DIR / "decisions_history.json"
 
 
 @router.get("/")
-def list_decisions(page: int = 1, page_size: int = 20):
+def list_decisions(page: int = 1, page_size: int = 20, asset: str | None = None, alerted: bool | None = None):
     if not DECISIONS_FILE.exists():
         return {"items": [], "total": 0, "page": page, "page_size": page_size, "total_pages": 0}
     all_decisions = read_json_list(DECISIONS_FILE)
+    if asset:
+        all_decisions = [item for item in all_decisions if asset.lower() in item.get("asset", "").lower()]
+    if alerted is not None:
+        all_decisions = [item for item in all_decisions if bool(item.get("alert_triggered")) == alerted]
     all_decisions.sort(key=lambda item: item.get("created_at", ""), reverse=True)
 
     total = len(all_decisions)

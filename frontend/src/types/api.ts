@@ -83,6 +83,7 @@ export interface RetrievedPassage {
   retrieved_at: string
   source_type: 'kb_retrieved' | 'fallback_generic'
   grounded: boolean
+  metadata: Record<string, unknown>
 }
 
 export interface Hypothesis {
@@ -121,6 +122,10 @@ export interface TraceEvent {
   output_summary: string
   raw_input?: Record<string, unknown>
   raw_output?: Record<string, unknown>
+  action?: string
+  tool_calls?: string[]
+  timestamp?: string
+  error_message?: string
 }
 
 export interface FinAgentState {
@@ -213,3 +218,24 @@ export interface PaginatedResponse<T> {
   page_size: number
   total_pages: number
 }
+
+export interface PipelineJob {
+  job_id: string
+  signal_id: string
+  status: 'queued' | 'running' | 'completed' | 'failed'
+  stage: string
+  result?: Partial<PipelineResponse>
+  error?: string
+  elapsed_ms?: number
+}
+
+export interface IngestionStatus {
+  id: string
+  status: 'queued' | 'running' | 'completed' | 'failed'
+  stage: string
+  completed_chunks: number
+  total_chunks: number
+  error?: string
+}
+
+export type EditableConfig = Record<string, string | number>

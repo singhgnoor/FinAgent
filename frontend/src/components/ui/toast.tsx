@@ -32,6 +32,8 @@ function Toast({ className, variant, onClose, children, ...props }: ToastProps) 
       {onClose && (
         <button
           onClick={onClose}
+          type="button"
+          aria-label="Dismiss notification"
           className="absolute right-1 top-1 rounded-md p-1 text-foreground/50 opacity-0 transition-opacity hover:text-foreground focus:opacity-100 focus:outline-none focus:ring-2 group-hover:opacity-100"
         >
           <X className="h-4 w-4" />

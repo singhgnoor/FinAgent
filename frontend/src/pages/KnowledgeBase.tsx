@@ -1,4 +1,4 @@
-import { useState, useRef } from "react"
+import { useEffect, useState, useRef } from "react"
 import { Database, Upload, Search, RefreshCw, FileText, X, Inbox, Trash2 } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -15,21 +15,44 @@ import { ErrorState } from "@/components/shared/ErrorState"
 import { StatusBadge } from "@/components/shared/StatusBadge"
 import { useKnowledgeBaseStatus, useUploadDocuments, useReindex, useKBSearch } from "@/hooks/use-knowledge-base"
 import { toast } from "@/components/ui/use-toast"
+import { getIngestionStatus } from "@/services/knowledge-base"
+import type { IngestionStatus } from "@/types/api"
 
 export default function KnowledgeBase() {
   const { data: kbStatus, isLoading, isError, refetch } = useKnowledgeBaseStatus()
   const uploadMutation = useUploadDocuments()
   const reindexMutation = useReindex()
+  const [searchDraft, setSearchDraft] = useState("")
   const [searchQuery, setSearchQuery] = useState("")
-  const { data: searchResults } = useKBSearch(searchQuery)
+  const { data: searchResults, isError: searchFailed, error: searchError, isFetching: searchLoading } = useKBSearch(searchQuery)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const [ingestionId, setIngestionId] = useState<string | null>(null)
+  const [ingestion, setIngestion] = useState<IngestionStatus | null>(null)
+
+  useEffect(() => {
+    if (!ingestionId) return
+    let cancelled = false
+    const poll = async () => {
+      try {
+        const status = await getIngestionStatus(ingestionId)
+        if (cancelled) return
+        setIngestion(status)
+        if (status.status === "completed") { toast({ title: "Ingestion complete" }); refetch(); return }
+        if (status.status === "failed") { toast({ title: "Ingestion failed", description: status.error, variant: "destructive" }); return }
+        window.setTimeout(poll, 800)
+      } catch (error: any) { if (!cancelled) toast({ title: "Could not read ingestion status", description: error.message, variant: "destructive" }) }
+    }
+    poll()
+    return () => { cancelled = true }
+  }, [ingestionId, refetch])
 
   async function handleUpload(files: FileList | null) {
     if (!files?.length) return
     try {
-      await uploadMutation.mutateAsync(Array.from(files))
-      toast({ title: "Upload complete", variant: "default" })
-      refetch()
+      const queued = await uploadMutation.mutateAsync(Array.from(files))
+      setIngestionId(queued.ingestion_id)
+      setIngestion({ id: queued.ingestion_id, status: "queued", stage: "queued", completed_chunks: 0, total_chunks: 0 })
+      toast({ title: "Upload queued", description: "The live ingestion status will update below." })
     } catch (e: any) {
       toast({ title: "Upload failed", description: e.message, variant: "destructive" })
     }
@@ -119,10 +142,11 @@ export default function KnowledgeBase() {
                 className="hidden"
                 onChange={(e) => handleUpload(e.target.files)}
               />
-              {uploadMutation.isPending && (
+              {(uploadMutation.isPending || ingestion) && (
                 <div className="mt-4 space-y-2">
-                  <p className="text-xs text-muted-foreground">Uploading...</p>
-                  <Progress value={50} className="h-1" />
+                  <p className="text-xs text-muted-foreground">{uploadMutation.isPending ? "Uploading…" : ingestion?.stage}</p>
+                  <Progress value={ingestion?.total_chunks ? Math.round((ingestion.completed_chunks / ingestion.total_chunks) * 100) : ingestion?.status === "completed" ? 100 : 0} className="h-1" />
+                  {ingestion?.total_chunks ? <p className="text-xs text-muted-foreground">{ingestion.completed_chunks}/{ingestion.total_chunks} chunks embedded</p> : null}
                 </div>
               )}
             </CardContent>
@@ -134,22 +158,25 @@ export default function KnowledgeBase() {
               <CardDescription>Search through document contents</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
-              <div className="flex gap-2">
+              <form className="flex gap-2" onSubmit={(event) => { event.preventDefault(); setSearchQuery(searchDraft.trim()) }}>
                 <div className="relative flex-1">
                   <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
                   <Input
                     placeholder="Search..."
                     className="pl-8"
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
+                    value={searchDraft}
+                    onChange={(e) => setSearchDraft(e.target.value)}
                   />
                 </div>
-                {searchQuery && (
-                  <Button variant="ghost" size="icon" onClick={() => setSearchQuery("")}>
+                <Button type="submit" disabled={!searchDraft.trim() || searchLoading}><Search className="mr-1" /> Search</Button>
+                {searchDraft && (
+                  <Button type="button" variant="ghost" size="icon" onClick={() => { setSearchDraft(""); setSearchQuery("") }}>
                     <X className="h-4 w-4" />
                   </Button>
                 )}
-              </div>
+              </form>
+              {searchLoading && <p className="text-xs text-muted-foreground">Searching the knowledge base…</p>}
+              {searchFailed && <p className="text-xs text-destructive">{(searchError as Error)?.message || "Search failed"}</p>}
               {searchQuery && searchResults?.results && (
                 <ScrollArea className="h-[200px]">
                   <div className="space-y-2">
@@ -160,6 +187,7 @@ export default function KnowledgeBase() {
                           <span className="truncate max-w-[200px]">{r.source_document}</span>
                           <span>{Math.round(r.similarity_score * 100)}%</span>
                         </div>
+                        <pre className="mt-2 overflow-x-auto rounded bg-muted/60 p-2 text-[10px]">Metadata: {JSON.stringify(r.metadata, null, 2)}</pre>
                       </div>
                     ))}
                     {searchResults.results.length === 0 && (

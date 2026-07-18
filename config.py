@@ -27,11 +27,15 @@ LOG_LEVEL = "DEBUG" if VERBOSE else "INFO"
 
 ## LLM Backbone — OpenAI, declared per PS 3.1
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY")
+LLM_PROVIDER = "openai"
 LLM_MODEL_NAME = "gpt-5.4-mini"
 LLM_TEMPERATURE = 0.2
 
 ## Knowledge base source documents, for the KB build/test script
-KB_DOCS_DIR = DATA_DIR / "kb_docs"
+# User-uploaded PDFs are retained here and this directory is the source of
+# truth used by the KB reindex operation.
+KB_STORE_DIR = DATA_DIR / "kb_store"
+KB_DOCS_DIR = KB_STORE_DIR
 
 
 ## Agent Specific configuration

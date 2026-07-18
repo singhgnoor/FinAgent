@@ -26,7 +26,7 @@ export function ConfidenceGauge({ score, size = "md", showLabel = true }: Confid
   const color = getColor(score)
 
   return (
-    <div className="flex flex-col items-center gap-1">
+    <div className="flex flex-col items-center gap-1" title="Model confidence in this hypothesis, 0–100">
       <svg width={width} height={width} className="-rotate-90">
         <circle
           cx={width / 2}

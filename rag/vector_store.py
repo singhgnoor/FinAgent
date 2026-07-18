@@ -455,6 +455,7 @@ class FinAgentVectorStore:
             retrieved_at=datetime.now(timezone.utc),
             source_type="kb_retrieved",
             grounded=True,
+            metadata=dict(metadata),
         )
 
 

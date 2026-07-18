@@ -1,42 +1,35 @@
-import { createContext, useContext, useState, useCallback, useEffect, type ReactNode } from 'react'
+import { createContext, useContext, useState, useCallback, useLayoutEffect, type ReactNode } from 'react'
 
 interface AppState {
   theme: 'light' | 'dark'
   sidebarOpen: boolean
   setTheme: (theme: 'light' | 'dark') => void
+  toggleTheme: () => void
   toggleSidebar: () => void
   setSidebarOpen: (open: boolean) => void
 }
 
 const AppContext = createContext<AppState | null>(null)
 
-function getInitialTheme(): 'light' | 'dark' {
-  if (typeof window !== 'undefined') {
-    const stored = localStorage.getItem('finagent-theme')
-    if (stored === 'light' || stored === 'dark') return stored
-  }
-  return 'dark'
-}
-
 export function AppProvider({ children }: { children: ReactNode }) {
-  const [theme, setTheme] = useState<'light' | 'dark'>(getInitialTheme)
+  const [theme, setTheme] = useState<'light' | 'dark'>('dark')
   const [sidebarOpen, setSidebarOpen] = useState(true)
 
   const toggleSidebar = useCallback(() => {
     setSidebarOpen((prev) => !prev)
   }, [])
 
-  const persistTheme = useCallback((t: 'light' | 'dark') => {
-    localStorage.setItem('finagent-theme', t)
-    setTheme(t)
-  }, [])
+  const persistTheme = useCallback((t: 'light' | 'dark') => setTheme(t), [])
+  const toggleTheme = useCallback(() => setTheme((current) => current === 'dark' ? 'light' : 'dark'), [])
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     document.documentElement.classList.toggle('dark', theme === 'dark')
+    document.documentElement.dataset.theme = theme
+    document.body.classList.toggle('dark', theme === 'dark')
   }, [theme])
 
   return (
-    <AppContext.Provider value={{ theme, sidebarOpen, setTheme: persistTheme, toggleSidebar, setSidebarOpen }}>
+    <AppContext.Provider value={{ theme, sidebarOpen, setTheme: persistTheme, toggleTheme, toggleSidebar, setSidebarOpen }}>
       {children}
     </AppContext.Provider>
   )

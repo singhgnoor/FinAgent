@@ -1,2 +1,6 @@
 kb_docs/
 vector_store/
+kb_store/
+_upload_tmp/
+*.json
+*.lock

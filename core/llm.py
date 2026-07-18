@@ -22,6 +22,8 @@ _llm: Optional[ChatOpenAI] = None
 def get_llm() -> ChatOpenAI:
     """Lazily build+cache the shared LLM client (mirrors get_vector_store())."""
     global _llm
+    if config.LLM_PROVIDER.lower() != "openai":
+        raise ValueError("Only the configured OpenAI provider is currently supported")
     if _llm is None:
         logger.info(
             f"[llm] Initializing LLM client: model={config.LLM_MODEL_NAME}, "

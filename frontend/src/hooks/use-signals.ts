@@ -1,5 +1,5 @@
 import { useMutation, useQuery } from '@tanstack/react-query'
-import { processSignal, processPriceTick, processNews, uploadDocument, getRecentSignals } from '@/services/signals'
+import { processSignal, processPriceTick, processNews, uploadDocument, getLatestPipelineJob, getRecentSignals } from '@/services/signals'
 import type { RawSignal, PriceTickRequest, NewsRequest } from '@/types/api'
 
 export function useSignalMutation() {
@@ -26,4 +26,8 @@ export function useDocumentMutation() {
 
 export function useRecentSignals() {
   return useQuery({ queryKey: ['recent-signals'], queryFn: () => getRecentSignals(), refetchInterval: 5000 })
+}
+
+export function useLatestPipelineJob() {
+  return useQuery({ queryKey: ['pipeline-job', 'latest'], queryFn: getLatestPipelineJob, refetchInterval: 800 })
 }

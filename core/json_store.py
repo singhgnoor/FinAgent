@@ -57,6 +57,11 @@ def read_json_list(path: Path) -> List[Any]:
     with _exclusive_lock(path):
         if not path.exists():
             return []
+        try:
+            items = json.loads(path.read_text(encoding="utf-8"))
+            return items if isinstance(items, list) else []
+        except (json.JSONDecodeError, OSError):
+            return []
 
 
 def update_json_object(path: Path, mutator: Callable[[Dict[str, Any]], None]) -> Dict[str, Any]:
@@ -73,8 +78,3 @@ def update_json_object(path: Path, mutator: Callable[[Dict[str, Any]], None]) ->
         temporary.write_text(json.dumps(value, indent=2, default=str), encoding="utf-8")
         os.replace(temporary, path)
         return value
-        try:
-            items = json.loads(path.read_text(encoding="utf-8"))
-            return items if isinstance(items, list) else []
-        except (json.JSONDecodeError, OSError):
-            return []

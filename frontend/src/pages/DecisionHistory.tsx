@@ -1,4 +1,5 @@
 import React, { useState } from "react"
+import { useSearchParams } from "react-router-dom"
 import { motion } from "framer-motion"
 import {
   History, ChevronDown, ChevronUp, Download, Search,
@@ -28,10 +29,12 @@ const actionIcon: Record<string, React.ReactNode> = {
 
 export default function DecisionHistory() {
   const [page, setPage] = useState(1)
+  const [params] = useSearchParams()
   const [searchAsset, setSearchAsset] = useState("")
-  const [expandedRow, setExpandedRow] = useState<string | null>(null)
+  const [expandedRow, setExpandedRow] = useState<string | null>(params.get("decision"))
 
-  const { data, isLoading } = useDecisions({ page, page_size: 10 })
+  const alerted = params.get("alerted") === "true"
+  const { data, isLoading } = useDecisions({ page, page_size: 10, alerted })
 
   const filtered = data?.items?.filter((d: any) =>
     !searchAsset || (d.asset || "").toLowerCase().includes(searchAsset.toLowerCase())

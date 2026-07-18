@@ -1,17 +1,22 @@
 import api from './api'
-import type { KnowledgeBaseStatus, RetrievedPassage } from '@/types/api'
+import type { KnowledgeBaseStatus, RetrievedPassage, IngestionStatus } from '@/types/api'
 
 export async function getStatus(): Promise<KnowledgeBaseStatus> {
   const { data } = await api.get<KnowledgeBaseStatus>('/knowledge-base/status')
   return data
 }
 
-export async function uploadDocuments(files: File[]): Promise<{ message: string; count: number }> {
+export async function uploadDocuments(files: File[]): Promise<{ message: string; ingestion_id: string }> {
   const formData = new FormData()
   files.forEach((file) => formData.append('files', file))
   const { data } = await api.post('/knowledge-base/upload', formData, {
     headers: { 'Content-Type': 'multipart/form-data' },
   })
+  return data
+}
+
+export async function getIngestionStatus(id: string): Promise<IngestionStatus> {
+  const { data } = await api.get<IngestionStatus>(`/knowledge-base/ingestions/${id}`)
   return data
 }
 
