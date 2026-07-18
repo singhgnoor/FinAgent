@@ -7,8 +7,9 @@ the vector store is empty.
 
 import uuid
 import time
+import re
 from datetime import datetime, timezone
-from typing import List
+from typing import List, Optional
 
 from core.state import (
     AgentName,
@@ -17,29 +18,96 @@ from core.state import (
     RetrievedPassage,
     SignalType,
     new_trace_event,
+    RAGQuery,
 )
 
-from config import TOP_K_DEFAULT
+from config import TOP_K_DEFAULT, ASSET_ALIASES
 from rag.vector_store import get_vector_store
 from core.log import get_logger
 
 logger = get_logger(__name__)
 
 
-def _build_query(state: FinAgentState) -> str:
+# Query builder helper
+
+def _normalize_asset_token(asset: str) -> str:
+    return re.sub(r"[^A-Z0-9 ]", "", asset.upper()).strip()
+
+
+def _resolve_aliases(asset: str) -> List[str]:
+    """Alias list for an asset. Falls back to a fuzzy substring match against
+    known keys, then to the raw token itself if nothing matches — so an
+    unmapped ticker degrades to 'filter on exactly this string' rather than
+    silently filtering on nothing."""
+    token = _normalize_asset_token(asset)
+    if not token:
+        return []
+    if token in ASSET_ALIASES:
+        return ASSET_ALIASES[token]
+    for key, aliases in ASSET_ALIASES.items():
+        if token in key or key in token:
+            return aliases
+    return [token]
+
+
+def _build_query(state: FinAgentState) -> Optional[RAGQuery]:
     event = state.get("normalized_event")
     if event is None:
-        return ""
-    if event.event_type == SignalType.PRICE_TICK:
-        return f"{event.asset} financial performance, business outlook, valuation, and growth drivers"
-    return event.normalized_text
+        return None
 
+    asset = event.asset or ""
+    aliases = _resolve_aliases(asset) if asset else []
 
-def _vector_search(query: str, top_k: int = TOP_K_DEFAULT) -> List[RetrievedPassage]:
+    if event.event_type == SignalType.PRICE_TICK and event.price_data:
+        pd = event.price_data
+        rsi_desc = (
+            "overbought" if pd.rsi and pd.rsi > 70
+            else "oversold" if pd.rsi and pd.rsi < 30
+            else "neutral RSI"
+        )
+        trend_desc = "above" if pd.close > (pd.moving_average or 0) else "below"
+
+        # Semantic leg: concepts, not just numbers — this is what dense
+        # embeddings actually key off of.
+        semantic_query = (
+            f"{asset} financial performance, valuation, and business outlook. "
+            f"Current technical context: price is {trend_desc} its moving average, "
+            f"showing {rsi_desc} momentum, on volume of {pd.volume:.0f}. "
+            f"Relevant considerations: growth drivers, risk factors, sector "
+            f"positioning, and how comparable price action has historically resolved."
+        )
+
+        # Keyword leg: dense in exact tokens BM25 rewards — ticker, aliases,
+        # literal indicator names and values. No filler.
+        keyword_query = (
+            f"{asset} {' '.join(aliases)} RSI {pd.rsi:.1f} "
+            f"moving average {pd.moving_average:.2f} close {pd.close} "
+            f"volume {pd.volume:.0f} {rsi_desc} {trend_desc} moving average"
+        )
+    else:
+        base_text = event.normalized_text or ""
+        # Prefix asset context explicitly — a short headline like "cuts
+        # guidance for Q3" carries no company signal on its own, and that's
+        # exactly the case where FAISS/BM25 have historically been picking
+        # up the wrong company's chunks.
+        semantic_query = (
+            f"{asset}: {base_text}. Assess materiality to future cash flows, "
+            f"whether this is already priced in, and how it compares to the "
+            f"company's recent fundamental trajectory."
+        )
+        keyword_query = f"{asset} {' '.join(aliases)} {base_text}".strip()
+
+    return RAGQuery(
+        semantic_query=semantic_query.strip(),
+        keyword_query=keyword_query.strip(),
+        asset=asset or None,
+        asset_aliases=aliases,
+    )
+
+def _vector_search(rag_query: RAGQuery, top_k: int = TOP_K_DEFAULT) -> List[RetrievedPassage]:
     """Real hybrid RAG search via rag/vector_store.py."""
     store = get_vector_store()
-    return store.retrieve(query, top_k=top_k)
-
+    return store.retrieve(rag_query, top_k=top_k)
 
 def _fallback_passages(event: NormalizedEvent) -> List[RetrievedPassage]:
     """Generate financial context passages when the vector store is empty."""
@@ -119,6 +187,8 @@ def retrieval_node(state: FinAgentState) -> dict:
     node_start = time.perf_counter()
     query = _build_query(state)
 
+    print(f"\n\n\nretrieval node for {query}\n\n\n")
+
     logger.info("[retrieval] Node entry: building RAG query")
 
     if not query:
@@ -133,7 +203,7 @@ def retrieval_node(state: FinAgentState) -> dict:
         logger.debug(f"[retrieval] Trace event: {trace.model_dump_json()}")
         return {"trace_log": [trace]}
 
-    logger.debug(f"[retrieval] Query: {query[:150]}..." if len(query) > 150 else f"[retrieval] Query: {query}")
+    logger.debug(f"[retrieval] Query: {query}...")
 
     try:
         passages = _vector_search(query)
@@ -156,7 +226,7 @@ def retrieval_node(state: FinAgentState) -> dict:
         agent=AgentName.RETRIEVAL,
         action="similarity_search",
         tool_calls=["vector_store.retrieve"],
-        input_summary=query,
+        input_summary=query.__str__(),
         output_summary=f"{len(passages)} passages retrieved",
         duration_ms=round(elapsed * 1000, 2),
         status="ok",

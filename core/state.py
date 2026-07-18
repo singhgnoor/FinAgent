@@ -25,6 +25,7 @@ import operator
 import uuid
 from datetime import datetime, timezone
 from enum import Enum
+from dataclasses import dataclass, field
 from typing import Any, Dict, List, Literal, Optional
 
 from pydantic import BaseModel, Field
@@ -82,7 +83,7 @@ def confidence_to_level(score: int) -> ConfidenceLevel:
     return ConfidenceLevel.LOW
 
 
-# 2.1 Ingestion — raw input and its normalized form
+# 2.1 Ingestion — raw input and its normalised form
 
 class RawSignal(BaseModel):
     """Whatever comes off a data feed, before any parsing/normalisation."""
@@ -146,6 +147,43 @@ class RetrievedPassage(BaseModel):
     section_reference: Optional[str] = None   # page or section number
     similarity_score: float
     retrieved_at: datetime
+
+@dataclass
+class RAGQuery:
+    semantic_query: str
+    keyword_query: str
+    asset: Optional[str] = None
+    asset_aliases: List[str] = field(default_factory=list)
+
+    def __str__(self) -> str:
+        # what you want to show for logging / f-strings
+        return self.semantic_query
+
+    def __repr__(self) -> str:
+        # more detailed, useful for debugging
+        return f"RAGQuery(semantic_query={self.semantic_query!r}, keyword_query={self.keyword_query!r}), asset={self.asset!r}, asset_aliases={self.asset_aliases!r}"
+
+@dataclass
+class ScoreBundle:
+    """Every score a candidate accumulates on its way through the pipeline,
+    kept as separate fields on purpose — see the module docstring. `None`
+    means that stage never touched this candidate (e.g. a BM25-only hit has
+    no dense_score), which is itself useful debugging signal; don't coerce
+    it to 0.0 upstream of logging.
+    """
+    dense_score: Optional[float] = None            # raw FAISS score. Cosine similarity in
+                                                        # [-1,1] if config.FAISS_DISTANCE_STRATEGY
+                                                        # == "cosine" (recommended); raw L2 distance
+                                                        # (unbounded, lower=better) otherwise.
+    sparse_score: Optional[float] = None           # raw BM25 score — unbounded, corpus-dependent,
+                                                        # not comparable across queries.
+    rrf_score: Optional[float] = None              # rank-position blend of the two above.
+    recency_weighted_score: Optional[float] = None # rrf_score reweighted by document age.
+    rerank_logit: Optional[float] = None           # raw cross-encoder output — unbounded.
+    rerank_confidence: Optional[float] = None      # sigmoid(rerank_logit) — this is the only
+                                                        # field in this bundle that's a genuine
+                                                        # [0,1] confidence.
+    is_low_confidence: bool = False
 
 
 # 2.3 Signal Analysis & Hypothesis

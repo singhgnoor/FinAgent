@@ -41,7 +41,6 @@ import pickle
 import uuid
 import time
 import logging
-from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import List, Optional, Tuple
 
@@ -52,7 +51,7 @@ from langchain_community.vectorstores import FAISS
 from langchain_core.documents import Document
 
 import config
-from core.state import RetrievedPassage
+from core.state import RetrievedPassage, ScoreBundle, RAGQuery
 from core.log import get_logger
 
 logger = get_logger(__name__)
@@ -85,28 +84,6 @@ def _resolve_distance_strategy() -> DistanceStrategy:
         )
     return mapping[key]
 
-
-@dataclass
-class ScoreBundle:
-    """Every score a candidate accumulates on its way through the pipeline,
-    kept as separate fields on purpose — see the module docstring. `None`
-    means that stage never touched this candidate (e.g. a BM25-only hit has
-    no dense_score), which is itself useful debugging signal; don't coerce
-    it to 0.0 upstream of logging.
-    """
-    dense_score: Optional[float] = None            # raw FAISS score. Cosine similarity in
-                                                     # [-1,1] if config.FAISS_DISTANCE_STRATEGY
-                                                     # == "cosine" (recommended); raw L2 distance
-                                                     # (unbounded, lower=better) otherwise.
-    sparse_score: Optional[float] = None            # raw BM25 score — unbounded, corpus-dependent,
-                                                     # not comparable across queries.
-    rrf_score: Optional[float] = None               # rank-position blend of the two above.
-    recency_weighted_score: Optional[float] = None  # rrf_score reweighted by document age.
-    rerank_logit: Optional[float] = None            # raw cross-encoder output — unbounded.
-    rerank_confidence: Optional[float] = None        # sigmoid(rerank_logit) — this is the only
-                                                       # field in this bundle that's a genuine
-                                                       # [0,1] confidence.
-    is_low_confidence: bool = False
 
 
 class FinAgentVectorStore:
@@ -227,7 +204,11 @@ class FinAgentVectorStore:
 
     # -- retrieval -----------------------------------------------------
 
-    def retrieve(self, query: str, top_k: Optional[int] = None) -> List[RetrievedPassage]:
+    def retrieve(
+            self,
+            rag_query: RAGQuery,
+            top_k: Optional[int] = None,
+    ) -> List[RetrievedPassage]:
         """
         Hybrid dense+sparse retrieval, fused with RRF, reweighted by
         recency, optionally reranked, and returned as RetrievedPassage
@@ -236,12 +217,17 @@ class FinAgentVectorStore:
         retrieval_start = time.perf_counter()
         top_k = top_k or config.FINAL_TOP_K
 
-        logger.info(f"[vector_store.retrieve] Query: {query[:100]}..." if len(query) > 100 else f"[vector_store.retrieve] Query: {query}")
+        logger.info(f"[vector_store.retrieve] Semantic: {rag_query.semantic_query[:100]}")
+        logger.info(f"[vector_store.retrieve] Keyword:  {rag_query.keyword_query[:100]}")
+        logger.info(f"[vector_store.retrieve] Asset scope: {rag_query.asset_aliases}")
 
         if self._faiss_store is None or self._bm25_retriever is None:
             logger.warning("[vector_store.retrieve] Index is empty (not initialized)")
             return []
 
+        asset_filter = self._make_asset_filter(rag_query.asset_aliases)
+
+        """ OLD LOGIC
         # dense_hits = self._faiss_store.similarity_search_with_score(query, k=config.DENSE_TOP_K)
         # Important change in function to get cosine scores (this is giving squared distance)
         dense_hits = self._faiss_store.similarity_search_with_relevance_scores(query, k=config.DENSE_TOP_K)
@@ -254,6 +240,26 @@ class FinAgentVectorStore:
 
         sparse_hits = self._bm25_search_with_score(query, k=config.SPARSE_TOP_K)
         logger.info(f"[vector_store.retrieve] BM25 returned {len(sparse_hits)} candidates (k={config.SPARSE_TOP_K})")
+        """
+
+        # Overfetch when a filter is active so post-filter recall doesn't starve —
+        # same reasoning as the retrieval_agent.py OVERFETCH_FACTOR, applied here
+        # instead so it happens once, pre-fusion, rather than after everything's
+        # already been through RRF+recency+rerank.
+
+        dense_fetch_k = config.DENSE_TOP_K * 4 if asset_filter else config.DENSE_TOP_K
+
+        dense_hits = self._faiss_store.similarity_search_with_relevance_scores(
+            rag_query.semantic_query, k=dense_fetch_k, filter=asset_filter
+        )
+        dense_hits = list(map(lambda t: (t[0], 1 - t[1] / 2), dense_hits))
+        dense_hits = dense_hits[: config.DENSE_TOP_K]
+        logger.info(f"[vector_store.retrieve] FAISS returned {len(dense_hits)} can`didates")
+
+        sparse_hits = self._bm25_search_with_score(
+            rag_query.keyword_query, k=config.SPARSE_TOP_K, metadata_filter=asset_filter
+        )
+        logger.info(f"[vector_store.retrieve] BM25 returned {len(sparse_hits)} candidates")
 
         fused = self._reciprocal_rank_fusion(dense_hits, sparse_hits)
         logger.info(f"[vector_store.retrieve] RRF fused {len(fused)} unique documents from dense+sparse results")
@@ -272,7 +278,7 @@ class FinAgentVectorStore:
 
         if self._cross_encoder:
             logger.debug(f"[vector_store.retrieve] Running cross-encoder reranking on {len(candidate_pool)} candidates...")
-            candidate_pool = self._rerank(query, candidate_pool)
+            candidate_pool = self._rerank(rag_query.semantic_query, candidate_pool)
             self._log_candidates("post-rerank (sorted)", candidate_pool)
 
         final = candidate_pool[:top_k]
@@ -292,7 +298,9 @@ class FinAgentVectorStore:
         return retrieved_passages
 
     # -- internal helpers ------------------------------------------------
-    def _bm25_search_with_score(self, query: str, k: int) -> List[Tuple[Document, float]]:
+    def _bm25_search_with_score(
+            self, query: str, k: int, metadata_filter=None
+    ) -> List[Tuple[Document, float]]:
         """
         BM25Retriever.invoke() returns bare Documents — LangChain discards the
         score computed inside rank_bm25. Pull it straight from the underlying
@@ -309,8 +317,31 @@ class FinAgentVectorStore:
         processed_query = self._bm25_retriever.preprocess_func(query)
         raw_scores = self._bm25_retriever.vectorizer.get_scores(processed_query)
         scored = list(zip(self._bm25_retriever.docs, raw_scores))
+
+        if metadata_filter is not None:
+            scored = [(doc, score) for doc, score in scored if metadata_filter(doc.metadata)]
+
         scored.sort(key=lambda pair: pair[1], reverse=True)
         return [(doc, float(score)) for doc, score in scored[:k]]
+
+    @staticmethod
+    def _make_asset_filter(aliases: List[str]):
+        """Returns a metadata predicate for LangChain FAISS's `filter` param and
+        for _bm25_search_with_score, or None if there's no asset scope to enforce.
+        LangChain's FAISS.similarity_search_with_score accepts filter as a callable
+        taking metadata -> bool as of langchain_community >=0.0.20-ish — confirm
+        against your installed version; if it only accepts an exact-match dict on
+        yours, swap this for filtering dense_hits post-hoc instead, same pattern
+        as the BM25 branch above."""
+        if not aliases:
+            return None
+        aliases_upper = [a.upper() for a in aliases]
+
+        def _filter(metadata: dict) -> bool:
+            haystack = f"{metadata.get('doc_name', '')} {metadata.get('section', '')}".upper()
+            return any(alias in haystack for alias in aliases_upper)
+
+        return _filter
 
     @staticmethod
     def _reciprocal_rank_fusion(
@@ -418,11 +449,12 @@ class FinAgentVectorStore:
         # ran, else the recency-weighted RRF score — never the two conflated with
         # each other, at least). All five components are still logged separately
         # above via _log_candidates, they just don't survive past this function
-        # yet. Send me core/state.py's RetrievedPassage definition and I'll add
+        # yet. Core/state.py's RetrievedPassage definition has to add
         # dense_score / sparse_score / rrf_score / recency_weighted_score /
-        # rerank_logit / rerank_confidence / is_low_confidence as real fields
-        # instead of guessing at a schema that might break the Decision Agent.
-        final_score = bundle.rerank_confidence if bundle.rerank_confidence is not None else bundle.recency_weighted_score
+        # rerank_logit / rerank_confidence / is_low_confidence as real fields.
+
+        final_score = bundle.dense_score if bundle.dense_score is not None else bundle.sparse_score * 0.8
+        # final_score = bundle.rerank_confidence if bundle.rerank_confidence is not None else bundle.recency_weighted_score
         if bundle.is_low_confidence:
             section_reference = f"{section_reference} [LOW CONFIDENCE]"
 

@@ -7,7 +7,7 @@ Single source of truth for tunable constants used across the pipeline.
 
 from pathlib import Path
 import os
-import logging
+from typing import List, Dict
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -39,6 +39,14 @@ KB_DOCS_DIR = DATA_DIR / "kb_docs"
 DEFAULT_ALERT_THRESHOLD = 70  # Decision Agent
 
 # RAG Agent
+ASSET_ALIASES: Dict[str, List[str]] = {
+    "HDFC": ["HDFC", "HDFC BANK", "HDFCBANK", "HDFC LTD", "HOUSING DEVELOPMENT FINANCE"],
+    "TCS": ["TCS", "TATA CONSULTANCY", "TATA CONSULTANCY SERVICES"],
+    "RELIANCE": ["RELIANCE", "RIL", "RELIANCE INDUSTRIES"],
+    "INFY": ["INFY", "INFOSYS"],
+    # ... add the rest of your evaluation universe here
+}
+
 TOP_K_DEFAULT = 3
 
 # Embedding model (RAG)
