@@ -95,7 +95,7 @@ export default function KnowledgeBase() {
           <AnimatedCard delay={0.3}>
             <CardHeader>
               <CardTitle>Upload Documents</CardTitle>
-              <CardDescription>Add PDFs, reports, or text files to the knowledge base</CardDescription>
+              <CardDescription>Add PDF reports to the knowledge base</CardDescription>
             </CardHeader>
             <CardContent>
               <div
@@ -109,13 +109,13 @@ export default function KnowledgeBase() {
               >
                 <Upload className="h-10 w-10 mb-3 text-muted-foreground" />
                 <p className="text-sm font-medium mb-1">Drop files here or click to browse</p>
-                <p className="text-xs text-muted-foreground">Supports PDF, TXT, MD files</p>
+                <p className="text-xs text-muted-foreground">Supports PDF files</p>
               </div>
               <input
                 ref={fileInputRef}
                 type="file"
                 multiple
-                accept=".pdf,.txt,.md"
+                accept=".pdf,application/pdf"
                 className="hidden"
                 onChange={(e) => handleUpload(e.target.files)}
               />
@@ -155,10 +155,10 @@ export default function KnowledgeBase() {
                   <div className="space-y-2">
                     {searchResults.results.map((r, i) => (
                       <div key={i} className="rounded border p-2 text-xs">
-                        <p className="line-clamp-2">{r.content}</p>
+                        <p className="line-clamp-2">{r.text}</p>
                         <div className="flex justify-between mt-1 text-muted-foreground">
-                          <span className="truncate max-w-[200px]">{r.source}</span>
-                          <span>{Math.round(r.score * 100)}%</span>
+                          <span className="truncate max-w-[200px]">{r.source_document}</span>
+                          <span>{Math.round(r.similarity_score * 100)}%</span>
                         </div>
                       </div>
                     ))}

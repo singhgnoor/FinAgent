@@ -147,6 +147,10 @@ class RetrievedPassage(BaseModel):
     section_reference: Optional[str] = None   # page or section number
     similarity_score: float
     retrieved_at: datetime
+    # `kb_retrieved` is the only value that may be treated as grounded RAG
+    # evidence.  Fallback passages deliberately carry a different source type.
+    source_type: Literal["kb_retrieved", "fallback_generic"] = "kb_retrieved"
+    grounded: bool = True
 
 @dataclass
 class RAGQuery:
@@ -201,6 +205,7 @@ class Hypothesis(BaseModel):
     grounding_passage_ids: List[str]            # links back to RetrievedPassage.passage_id
     created_at: datetime
     source_event_id: Optional[str] = None       # links back to NormalizedEvent.event_id
+    grounded: bool = True
 
 
 # 2.4 Decision Synthesis & Alerting
@@ -218,6 +223,7 @@ class DecisionArtefact(BaseModel):
     created_at: datetime
     alert_triggered: bool
     source_hypothesis_id: Optional[str] = None  # links back to Hypothesis.hypothesis_id
+    source_hypothesis_ids: List[str] = Field(default_factory=list)
 
 # 5.4 Observability — required trace log
 
@@ -273,11 +279,13 @@ class FinAgentState(TypedDict, total=False):
     normalized_event: Optional[NormalizedEvent]
 
     # --- Retrieval Agent I/O ---
-    rag_query: Optional[str]
+    rag_query: Optional[RAGQuery]
     retrieved_passages: List[RetrievedPassage]
+    retrieval_grounded: bool
 
     # --- Analysis Agent I/O ---
     hypothesis: Optional[Hypothesis]
+    hypotheses: List[Hypothesis]
 
     # --- Decision Agent I/O ---
     artefact: Optional[DecisionArtefact]
@@ -296,6 +304,7 @@ def create_initial_state(alert_threshold: int = DEFAULT_ALERT_THRESHOLD) -> FinA
         rag_query=None,
         retrieved_passages=[],
         hypothesis=None,
+        hypotheses=[],
         artefact=None,
         alert_threshold=alert_threshold,
         trace_log=[],

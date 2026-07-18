@@ -131,6 +131,8 @@ def _fallback_passages(event: NormalizedEvent) -> List[RetrievedPassage]:
                 section_reference="Price Action & Momentum Indicators",
                 similarity_score=0.75,
                 retrieved_at=now,
+                source_type="fallback_generic",
+                grounded=False,
             ),
             RetrievedPassage(
                 passage_id=str(uuid.uuid4()),
@@ -142,6 +144,8 @@ def _fallback_passages(event: NormalizedEvent) -> List[RetrievedPassage]:
                 section_reference="Signal Reliability & Confirmation",
                 similarity_score=0.65,
                 retrieved_at=now,
+                source_type="fallback_generic",
+                grounded=False,
             ),
             RetrievedPassage(
                 passage_id=str(uuid.uuid4()),
@@ -153,6 +157,8 @@ def _fallback_passages(event: NormalizedEvent) -> List[RetrievedPassage]:
                 section_reference="Position Sizing & Stop Placement",
                 similarity_score=0.60,
                 retrieved_at=now,
+                source_type="fallback_generic",
+                grounded=False,
             ),
         ]
 
@@ -167,6 +173,8 @@ def _fallback_passages(event: NormalizedEvent) -> List[RetrievedPassage]:
             section_reference="Event Materiality Assessment",
             similarity_score=0.70,
             retrieved_at=now,
+            source_type="fallback_generic",
+            grounded=False,
         ),
         RetrievedPassage(
             passage_id=str(uuid.uuid4()),
@@ -178,6 +186,8 @@ def _fallback_passages(event: NormalizedEvent) -> List[RetrievedPassage]:
             section_reference="News-Driven Price Action",
             similarity_score=0.60,
             retrieved_at=now,
+            source_type="fallback_generic",
+            grounded=False,
         ),
     ]
 
@@ -186,8 +196,6 @@ def retrieval_node(state: FinAgentState) -> dict:
     """LangGraph node entrypoint. Builds a query, retrieves passages, falls back to generated context."""
     node_start = time.perf_counter()
     query = _build_query(state)
-
-    print(f"\n\n\nretrieval node for {query}\n\n\n")
 
     logger.info("[retrieval] Node entry: building RAG query")
 
@@ -205,13 +213,16 @@ def retrieval_node(state: FinAgentState) -> dict:
 
     logger.debug(f"[retrieval] Query: {query}...")
 
+    retrieval_error = None
     try:
         passages = _vector_search(query)
         logger.info(f"[retrieval] Vector search returned {len(passages)} passages")
     except Exception as e:
         logger.exception(f"[retrieval] Vector search failed: {type(e).__name__}: {str(e)}")
+        retrieval_error = str(e)
         passages = []
 
+    grounded = bool(passages) and all(p.grounded and p.source_type == "kb_retrieved" for p in passages)
     if not passages:
         event = state.get("normalized_event")
         if event:
@@ -227,9 +238,11 @@ def retrieval_node(state: FinAgentState) -> dict:
         action="similarity_search",
         tool_calls=["vector_store.retrieve"],
         input_summary=query.__str__(),
-        output_summary=f"{len(passages)} passages retrieved",
+        output_summary=(f"{len(passages)} KB-grounded passages retrieved" if grounded
+                        else f"{len(passages)} fallback (non-KB) passages"),
         duration_ms=round(elapsed * 1000, 2),
-        status="ok",
+        status="ok" if grounded else "fallback",
+        error_message=None if grounded else (retrieval_error or "Knowledge base returned no matching passages"),
     )
 
     logger.info(
@@ -240,5 +253,7 @@ def retrieval_node(state: FinAgentState) -> dict:
     return {
         "rag_query": query,
         "retrieved_passages": passages,
+        "retrieval_grounded": grounded,
         "trace_log": [trace],
+        **({"errors": [f"retrieval_agent: {retrieval_error or 'knowledge base returned no matching passages'}"]} if not grounded else {}),
     }

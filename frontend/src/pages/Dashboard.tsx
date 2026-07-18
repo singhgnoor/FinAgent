@@ -12,6 +12,7 @@ import { ErrorState } from "@/components/shared/ErrorState"
 import { useDecisions } from "@/hooks/use-decisions"
 import { useSystemHealth, useSystemStatus } from "@/hooks/use-system"
 import { useKnowledgeBaseStatus } from "@/hooks/use-knowledge-base"
+import { useRecentSignals } from "@/hooks/use-signals"
 
 const actionIcon = {
   BUY: <TrendingUp className="h-4 w-4 text-green-500" />,
@@ -25,10 +26,11 @@ export default function Dashboard() {
   const { data: health, isLoading: healthLoading, isError: healthError, refetch: refetchHealth } = useSystemHealth()
   const { data: status, isLoading: statusLoading } = useSystemStatus()
   const { data: kbStatus, isLoading: kbLoading } = useKnowledgeBaseStatus()
+  const { data: signalsData } = useRecentSignals()
 
   const latestDecision = decisionsData?.items?.[0]
   const totalDecisions = decisionsData?.total ?? 0
-  const alertCount = decisionsData?.items?.filter((d) => d.alert).length ?? 0
+  const alertCount = decisionsData?.items?.filter((d) => d.alert_triggered).length ?? 0
 
   return (
     <div>
@@ -132,11 +134,10 @@ export default function Dashboard() {
                   </div>
                   <StatusBadge status={latestDecision.confidence_level} />
                 </div>
-                <p className="text-sm text-muted-foreground">{latestDecision.reasoning}</p>
+                <p className="text-sm text-muted-foreground">{latestDecision.llm_commentary || latestDecision.evidence_bullets[0]}</p>
                 <div className="flex items-center gap-4 text-xs text-muted-foreground">
-                  <span>Risk: {latestDecision.risk_level}</span>
-                  <span>Horizon: {latestDecision.time_horizon}</span>
-                  <span>{new Date(latestDecision.timestamp).toLocaleString()}</span>
+                  <span>Risks: {latestDecision.risk_flags.length}</span>
+                  <span>{new Date(latestDecision.created_at).toLocaleString()}</span>
                 </div>
               </div>
             ) : (
@@ -155,9 +156,9 @@ export default function Dashboard() {
                 <Skeleton className="h-16 w-full" />
               </div>
             ) : (
-              <PipelineVisualizer trace={latestDecision?.trace} className="justify-center py-4" />
+              <PipelineVisualizer trace={latestDecision?.trace_log} className="justify-center py-4" />
             )}
-            {!latestDecision?.trace && (
+            {!latestDecision?.trace_log && (
               <p className="text-xs text-muted-foreground text-center mt-2">Submit a signal to see the pipeline</p>
             )}
           </CardContent>
@@ -182,7 +183,7 @@ export default function Dashboard() {
               <div className="space-y-2">
                 {decisionsData.items.map((d) => (
                   <div
-                    key={d.decision_id}
+                    key={d.artefact_id}
                     className="flex items-center justify-between rounded-lg border p-3 text-sm"
                   >
                     <div className="flex items-center gap-3">
@@ -190,7 +191,7 @@ export default function Dashboard() {
                       <div>
                         <span className="font-medium">{d.asset}</span>
                         <span className="text-muted-foreground ml-2">
-                          {d.signal_type}
+                          {d.normalized_event?.event_type || "signal"}
                         </span>
                       </div>
                     </div>
@@ -198,15 +199,15 @@ export default function Dashboard() {
                       <Badge
                         variant="outline"
                         className={
-                          d.confidence >= 70 ? "border-green-500/30 text-green-500" :
-                          d.confidence >= 40 ? "border-amber-500/30 text-amber-500" :
+                          d.confidence_score >= 70 ? "border-green-500/30 text-green-500" :
+                          d.confidence_score >= 40 ? "border-amber-500/30 text-amber-500" :
                           "border-red-500/30 text-red-500"
                         }
                       >
-                        {Math.round(d.confidence)}%
+                        {Math.round(d.confidence_score)}%
                       </Badge>
                       <span className="text-xs text-muted-foreground">
-                        {new Date(d.timestamp).toLocaleTimeString()}
+                        {new Date(d.created_at).toLocaleTimeString()}
                       </span>
                     </div>
                   </div>
@@ -255,10 +256,26 @@ export default function Dashboard() {
             <CardTitle className="text-lg">Confidence Score</CardTitle>
           </CardHeader>
           <CardContent className="flex justify-center py-6">
-            <ConfidenceGauge score={latestDecision.confidence} size="lg" />
+            <ConfidenceGauge score={latestDecision.confidence_score} size="lg" />
           </CardContent>
         </AnimatedCard>
       )}
+
+      <AnimatedCard delay={0.9} className="mt-6">
+        <CardHeader><CardTitle className="text-lg">Live Signal Feed</CardTitle></CardHeader>
+        <CardContent>
+          {signalsData?.items?.length ? (
+            <div className="space-y-2">
+              {signalsData.items.map((signal) => (
+                <div key={signal.event_id} className="flex justify-between gap-3 rounded-lg border p-3 text-sm">
+                  <span><strong>{signal.asset || "GENERAL"}</strong> · {signal.event_type}</span>
+                  <span className="text-xs text-muted-foreground">{new Date(signal.timestamp).toLocaleString()}</span>
+                </div>
+              ))}
+            </div>
+          ) : <p className="text-sm text-muted-foreground">No signals ingested yet.</p>}
+        </CardContent>
+      </AnimatedCard>
     </div>
   )
 }

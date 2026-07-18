@@ -18,7 +18,7 @@ import { AnimatedCard } from "@/components/shared/AnimatedCard"
 import { PipelineVisualizer } from "@/components/shared/PipelineVisualizer"
 import { ConfidenceGauge } from "@/components/shared/ConfidenceGauge"
 import { StatusBadge } from "@/components/shared/StatusBadge"
-import { usePriceTickMutation, useNewsMutation } from "@/hooks/use-signals"
+import { usePriceTickMutation, useNewsMutation, useDocumentMutation } from "@/hooks/use-signals"
 import { toast } from "@/components/ui/use-toast"
 import { cn } from "@/lib/utils"
 import type { PipelineResponse } from "@/types/api"
@@ -40,7 +40,7 @@ const newsSchema = z.object({
 })
 
 const documentSchema = z.object({
-  doc_name: z.string().min(1, "Required"),
+  asset: z.string().optional(),
   doc_type: z.string().min(1, "Required"),
 })
 
@@ -55,37 +55,16 @@ export default function SignalSubmission() {
 
   const priceMutation = usePriceTickMutation()
   const newsMutation = useNewsMutation()
+  const documentMutation = useDocumentMutation()
 
   const priceForm = useForm<PriceTickForm>({ resolver: zodResolver(priceTickSchema) })
   const newsForm = useForm<NewsForm>({ resolver: zodResolver(newsSchema) })
   const docForm = useForm<DocumentForm>({ resolver: zodResolver(documentSchema) })
 
-  function mapResponse(res: any): PipelineResponse {
-    const passages = (res.retrieved_passages || []).map((p: any) => ({
-      content: p.text,
-      source: p.source_document,
-      relevance_score: p.similarity_score,
-    }))
-    return {
-      status: res.success ? "ok" : "error",
-      state: {
-        status: res.success ? "ok" : "error",
-        normalized_event: res.normalized_event,
-        retrieved_passages: passages,
-        hypothesis: res.hypothesis,
-        decision: res.decision,
-        trace: res.trace_log,
-        error: res.errors?.[0],
-        timing: { total_ms: res.elapsed_ms },
-      },
-      decision_id: res.signal_id,
-    }
-  }
-
   async function onPriceTick(data: PriceTickForm) {
     try {
       const res = await priceMutation.mutateAsync(data)
-      setResult(mapResponse(res))
+      setResult(res)
       toast({ title: "Signal processed", variant: "default" })
     } catch (e: any) {
       toast({ title: "Submission failed", description: e.message, variant: "destructive" })
@@ -95,7 +74,7 @@ export default function SignalSubmission() {
   async function onNews(data: NewsForm) {
     try {
       const res = await newsMutation.mutateAsync(data)
-      setResult(mapResponse(res))
+      setResult(res)
       toast({ title: "Signal processed", variant: "default" })
     } catch (e: any) {
       toast({ title: "Submission failed", description: e.message, variant: "destructive" })
@@ -108,22 +87,19 @@ export default function SignalSubmission() {
       return
     }
     try {
-      const res = await priceMutation.mutateAsync({
-        asset: data.doc_name,
-        open: 0, high: 0, low: 0, close: 0, volume: 0,
-      })
-      setResult(mapResponse(res))
+      const res = await documentMutation.mutateAsync({ file, docType: data.doc_type, asset: data.asset })
+      setResult(res)
       toast({ title: "Document processed", variant: "default" })
     } catch (e: any) {
       toast({ title: "Submission failed", description: e.message, variant: "destructive" })
     }
   }
 
-  const isLoading = priceMutation.isPending || newsMutation.isPending
-  const decision = result?.state?.decision
-  const hypothesis = result?.state?.hypothesis
-  const trace = result?.state?.trace
-  const passages = result?.state?.retrieved_passages
+  const isLoading = priceMutation.isPending || newsMutation.isPending || documentMutation.isPending
+  const decision = result?.decision
+  const hypothesis = result?.hypothesis
+  const trace = result?.trace_log
+  const passages = result?.retrieved_passages
 
   return (
     <div>
@@ -204,12 +180,12 @@ export default function SignalSubmission() {
                 <TabsContent value="document">
                   <form onSubmit={docForm.handleSubmit(onDocument)} className="space-y-4">
                     <div className="space-y-2">
-                      <Label>Document Name</Label>
-                      <Input placeholder="e.g. Q2_Report" {...docForm.register("doc_name")} />
+                      <Label>Asset (optional)</Label>
+                      <Input placeholder="e.g. INFY" {...docForm.register("asset")} />
                     </div>
                     <div className="space-y-2">
                       <Label>Document Type</Label>
-                      <Input placeholder="e.g. pdf, txt, report" {...docForm.register("doc_type")} />
+                      <Input placeholder="e.g. filing, earnings_call" {...docForm.register("doc_type")} />
                     </div>
                     <div className="space-y-2">
                       <Label>File</Label>
@@ -234,6 +210,7 @@ export default function SignalSubmission() {
                       <input
                         id="file-upload"
                         type="file"
+                        accept=".pdf,application/pdf"
                         className="hidden"
                         onChange={(e) => setFile(e.target.files?.[0] || null)}
                       />
@@ -273,7 +250,7 @@ export default function SignalSubmission() {
 
                     <div>
                       <h4 className="text-sm font-medium mb-2">Status</h4>
-                      <StatusBadge status={result.state.status} />
+                      <StatusBadge status={result.success ? "ok" : "error"} />
                     </div>
 
                     {hypothesis && (
@@ -291,7 +268,7 @@ export default function SignalSubmission() {
                           >
                             {hypothesis.classification}
                           </Badge>
-                          <p className="text-xs text-muted-foreground mt-2">{hypothesis.reasoning}</p>
+                          <p className="text-xs text-muted-foreground mt-2">{hypothesis.rationale}</p>
                         </div>
                       </>
                     )}
@@ -311,7 +288,7 @@ export default function SignalSubmission() {
                             </Badge>
                             <StatusBadge status={decision.confidence_level} />
                           </div>
-                          <p className="text-xs text-muted-foreground">{decision.commentary}</p>
+                          <p className="text-xs text-muted-foreground">{decision.llm_commentary}</p>
                           <div className="flex justify-center my-2">
                             <ConfidenceGauge score={decision.confidence_score} size="sm" />
                           </div>
@@ -333,8 +310,8 @@ export default function SignalSubmission() {
                           <h4 className="text-sm font-medium mb-2">Retrieved Passages</h4>
                           {passages.map((p, i) => (
                             <div key={i} className="rounded border p-2 mb-2 text-xs">
-                              <p className="line-clamp-2">{p.content}</p>
-                              <p className="text-muted-foreground mt-1">Score: {Math.round(p.relevance_score * 100)}%</p>
+                              <p className="line-clamp-2">{p.text}</p>
+                              <p className="text-muted-foreground mt-1">{p.source_document} · Score: {Math.round(p.similarity_score * 100)}%</p>
                             </div>
                           ))}
                         </div>
@@ -359,9 +336,9 @@ export default function SignalSubmission() {
                       </>
                     )}
 
-                    {result.state.error && (
+                    {result.errors[0] && (
                       <div className="rounded bg-destructive/10 p-2 text-xs text-destructive">
-                        {result.state.error}
+                        {result.errors[0]}
                       </div>
                     )}
                   </div>

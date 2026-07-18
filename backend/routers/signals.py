@@ -1,4 +1,3 @@
-import json
 import os
 import shutil
 import tempfile
@@ -15,25 +14,37 @@ from backend.models.responses import PipelineResponse
 from core.graph import run_once
 from core.log import get_logger
 from core.state import RawSignal, SignalType
+from core.json_store import update_json_list
 
 logger = get_logger(__name__)
 router = APIRouter()
 
 DECISIONS_FILE = config.DATA_DIR / "decisions_history.json"
+SIGNALS_FILE = config.DATA_DIR / "signals_history.json"
 
 
-def _persist_decision(artefact) -> None:
+def _persist_decision(artefact, state) -> None:
     if artefact is None:
         return
     os.makedirs(config.DATA_DIR, exist_ok=True)
-    decisions = []
-    if DECISIONS_FILE.exists():
-        try:
-            decisions = json.loads(DECISIONS_FILE.read_text())
-        except (json.JSONDecodeError, Exception):
-            decisions = []
-    decisions.append(json.loads(artefact.model_dump_json()))
-    DECISIONS_FILE.write_text(json.dumps(decisions, indent=2, default=str))
+    record = artefact.model_dump(mode="json")
+    record.update({
+        "trace_log": [item.model_dump(mode="json") for item in state.get("trace_log", [])],
+        "errors": state.get("errors", []),
+        "hypothesis": state.get("hypothesis").model_dump(mode="json") if state.get("hypothesis") else None,
+        "retrieved_passages": [item.model_dump(mode="json") for item in state.get("retrieved_passages", [])],
+        "normalized_event": state.get("normalized_event").model_dump(mode="json") if state.get("normalized_event") else None,
+    })
+    update_json_list(DECISIONS_FILE, lambda items: items.append(record))
+
+
+def _persist_signal(raw_signal: RawSignal, state) -> None:
+    event = state.get("normalized_event")
+    if event is None:
+        return
+    record = event.model_dump(mode="json")
+    record["raw_id"] = raw_signal.raw_id
+    update_json_list(SIGNALS_FILE, lambda items: items.append(record))
 
 
 def _run_pipeline(
@@ -44,7 +55,8 @@ def _run_pipeline(
         state = run_once(raw_signal, alert_threshold=alert_threshold)
         elapsed = (time.perf_counter() - start) * 1000
         artefact = state.get("artefact")
-        _persist_decision(artefact)
+        _persist_signal(raw_signal, state)
+        _persist_decision(artefact, state)
         return PipelineResponse(
             success=True,
             signal_id=raw_signal.raw_id,
@@ -108,6 +120,7 @@ async def upload_document(
     file: UploadFile = File(...),
     doc_type: str = Form("filing"),
     source: str = Form("api"),
+    asset: str | None = Form(None),
     alert_threshold: int = Form(70),
 ):
     if not file.filename:
@@ -121,7 +134,13 @@ async def upload_document(
     try:
         from rag.ingest import load_and_chunk_document
 
-        chunks = load_and_chunk_document(tmp_path)
+        chunks = load_and_chunk_document(tmp_path, asset=asset)
+        if not chunks:
+            raise HTTPException(400, detail="Document did not yield any indexable chunks")
+        from rag.vector_store import get_vector_store
+        vstore = get_vector_store()
+        indexed = vstore.add_documents(chunks)
+        vstore.save()
         excerpt = chunks[0].page_content[:2000] if chunks else ""
 
         raw = RawSignal(
@@ -132,9 +151,23 @@ async def upload_document(
                 "doc_name": file.filename,
                 "doc_type": doc_type,
                 "excerpt": excerpt,
+                "asset": asset,
             },
             received_at=datetime.now(timezone.utc),
         )
-        return _run_pipeline(raw, alert_threshold=alert_threshold)
+        response = _run_pipeline(raw, alert_threshold=alert_threshold)
+        response.chunks_indexed = indexed
+        response.embedding_completed = indexed == len(chunks)
+        return response
     finally:
         os.unlink(tmp_path)
+
+
+@router.get("/recent")
+def list_recent_signals(limit: int = 20):
+    """Raw normalized feed, independent of whether a decision was emitted."""
+    from core.json_store import read_json_list
+    safe_limit = max(1, min(limit, 100))
+    events = read_json_list(SIGNALS_FILE)
+    events.sort(key=lambda item: item.get("timestamp", ""), reverse=True)
+    return {"items": events[:safe_limit], "total": len(events)}

@@ -64,10 +64,20 @@ _ENABLE_BORDERLESS_TABLES = getattr(config, "ENABLE_BORDERLESS_TABLE_DETECTION",
 
 # Public API
 
-def load_and_chunk_document(file_path: str, doc_date: Optional[datetime] = None) -> List[Document]:
-    """Parse one PDF into narrative + table chunks with section-aware metadata."""
+def load_and_chunk_document(
+    file_path: str, doc_date: Optional[datetime] = None, asset: Optional[str] = None
+) -> List[Document]:
+    """Parse one PDF into chunks tagged with a canonical asset identifier.
+
+    Policy: a document explicitly supplied for one asset receives that ticker.
+    A filename that maps to exactly one configured company is tagged likewise.
+    Ambiguous sector/multi-company documents are tagged ``MULTI_ASSET`` and
+    excluded from company-scoped retrieval unless a deliberate sector query is
+    implemented; they are still available to unscoped KB search.
+    """
     doc_name = os.path.basename(file_path)
     resolved_date = doc_date or _infer_doc_date(file_path)
+    canonical_asset, multi_asset = _document_asset_policy(doc_name, asset)
 
     chunks: List[Document] = []
     current_section = "General"
@@ -80,7 +90,7 @@ def load_and_chunk_document(file_path: str, doc_date: Optional[datetime] = None)
 
             for table in tables:
                 chunks.extend(
-                    _build_table_chunks(table, doc_name, current_section, page_num, resolved_date)
+                    _build_table_chunks(table, doc_name, current_section, page_num, resolved_date, canonical_asset, multi_asset)
                 )
 
             lines = _extract_page_lines(page, table_bboxes)
@@ -88,7 +98,7 @@ def load_and_chunk_document(file_path: str, doc_date: Optional[datetime] = None)
             sub_blocks = _merge_short_blocks(sub_blocks)
             for section_label, block_text in sub_blocks:
                 chunks.extend(
-                    _build_narrative_chunks(block_text, doc_name, section_label, page_num, resolved_date)
+                    _build_narrative_chunks(block_text, doc_name, section_label, page_num, resolved_date, canonical_asset, multi_asset)
                 )
 
     return chunks
@@ -323,7 +333,8 @@ def _merge_short_blocks(blocks: List[Tuple[str, str]]) -> List[Tuple[str, str]]:
 # Narrative chunking
 
 def _build_narrative_chunks(
-    text: str, doc_name: str, section: str, page_num: int, doc_date: datetime
+    text: str, doc_name: str, section: str, page_num: int, doc_date: datetime,
+    asset: str = "UNSCOPED", multi_asset: bool = False,
 ) -> List[Document]:
     text = text.strip()
     if not text:
@@ -343,7 +354,7 @@ def _build_narrative_chunks(
         documents.append(
             Document(
                 page_content=contextualized,
-                metadata=_build_metadata(doc_name, section, page_num, "narrative", doc_date, contextualized),
+                metadata=_build_metadata(doc_name, section, page_num, "narrative", doc_date, contextualized, asset, multi_asset),
             )
         )
     return documents
@@ -352,7 +363,8 @@ def _build_narrative_chunks(
 # Table chunking — atomic, never split mid-row
 
 def _build_table_chunks(
-    table: List[List[Optional[str]]], doc_name: str, section: str, page_num: int, doc_date: datetime
+    table: List[List[Optional[str]]], doc_name: str, section: str, page_num: int, doc_date: datetime,
+    asset: str, multi_asset: bool,
 ) -> List[Document]:
     rows = [[(cell or "").strip() for cell in row] for row in table]
     rows = [row for row in rows if any(row)]
@@ -370,7 +382,7 @@ def _build_table_chunks(
         documents.append(
             Document(
                 page_content=contextualized,
-                metadata=_build_metadata(doc_name, section, page_num, "table", doc_date, contextualized),
+                metadata=_build_metadata(doc_name, section, page_num, "table", doc_date, contextualized, asset, multi_asset),
             )
         )
     return documents
@@ -402,7 +414,10 @@ def _split_table_rows(
 
 # Shared helpers
 
-def _build_metadata(doc_name: str, section: str, page_num: int, chunk_type: str, doc_date: datetime, chunk_text: str) -> dict:
+def _build_metadata(
+    doc_name: str, section: str, page_num: int, chunk_type: str, doc_date: datetime,
+    chunk_text: str, asset: str = "UNSCOPED", multi_asset: bool = False,
+) -> dict:
     return {
         "doc_name": doc_name,
         "section": section,
@@ -410,6 +425,8 @@ def _build_metadata(doc_name: str, section: str, page_num: int, chunk_type: str,
         "chunk_type": chunk_type,
         "doc_date": doc_date.isoformat(),
         "chunk_id": _stable_chunk_id(doc_name, page_num, chunk_type, chunk_text),
+        "asset": asset,
+        "multi_asset": multi_asset,
     }
 
 
@@ -426,3 +443,25 @@ def _infer_doc_date(file_path: str) -> datetime:
     """Falls back to file modification time when no explicit publish date is given."""
     mtime = os.path.getmtime(file_path)
     return datetime.fromtimestamp(mtime, tz=timezone.utc)
+
+
+def _document_asset_policy(doc_name: str, explicit_asset: Optional[str]) -> Tuple[str, bool]:
+    if explicit_asset and explicit_asset.strip():
+        return _canonical_asset(explicit_asset), False
+    haystack = doc_name.upper()
+    matches = []
+    for ticker, aliases in config.ASSET_ALIASES.items():
+        tokens = [ticker, *aliases]
+        if any(token.upper() in haystack for token in tokens):
+            matches.append(ticker)
+    if len(matches) == 1:
+        return matches[0], False
+    return ("MULTI_ASSET", True) if len(matches) > 1 else ("UNSCOPED", False)
+
+
+def _canonical_asset(asset: str) -> str:
+    token = " ".join(asset.upper().split())
+    for ticker, aliases in config.ASSET_ALIASES.items():
+        if token == ticker or token in {" ".join(a.upper().split()) for a in aliases}:
+            return ticker
+    return token

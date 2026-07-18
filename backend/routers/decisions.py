@@ -1,9 +1,8 @@
-import json
-
 from fastapi import APIRouter, HTTPException
 
 import config
 from core.log import get_logger
+from core.json_store import read_json_list
 
 logger = get_logger(__name__)
 router = APIRouter()
@@ -15,10 +14,8 @@ DECISIONS_FILE = config.DATA_DIR / "decisions_history.json"
 def list_decisions(page: int = 1, page_size: int = 20):
     if not DECISIONS_FILE.exists():
         return {"items": [], "total": 0, "page": page, "page_size": page_size, "total_pages": 0}
-    try:
-        all_decisions = json.loads(DECISIONS_FILE.read_text())
-    except (json.JSONDecodeError, Exception) as e:
-        raise HTTPException(500, detail=f"Failed to read decisions history: {e}")
+    all_decisions = read_json_list(DECISIONS_FILE)
+    all_decisions.sort(key=lambda item: item.get("created_at", ""), reverse=True)
 
     total = len(all_decisions)
     total_pages = max(1, (total + page_size - 1) // page_size)
@@ -31,10 +28,7 @@ def list_decisions(page: int = 1, page_size: int = 20):
 def get_decision(artefact_id: str):
     if not DECISIONS_FILE.exists():
         raise HTTPException(404, detail="No decisions found")
-    try:
-        data = json.loads(DECISIONS_FILE.read_text())
-    except (json.JSONDecodeError, Exception) as e:
-        raise HTTPException(500, detail=f"Failed to read decisions history: {e}")
+    data = read_json_list(DECISIONS_FILE)
     for d in data:
         if d.get("artefact_id") == artefact_id:
             return d

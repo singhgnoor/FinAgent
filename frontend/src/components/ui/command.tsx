@@ -1,7 +1,8 @@
 import * as React from "react"
 import { Search } from "lucide-react"
 import { cn } from "@/lib/utils"
-import { Dialog, DialogContent, type DialogProps } from "@/components/ui/dialog"
+import { Dialog, DialogContent } from "@/components/ui/dialog"
+type DialogProps = React.ComponentPropsWithoutRef<typeof Dialog>
 
 const Command = React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDivElement>>(
   ({ className, ...props }, ref) => (

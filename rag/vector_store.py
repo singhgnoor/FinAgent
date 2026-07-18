@@ -206,7 +206,7 @@ class FinAgentVectorStore:
 
     def retrieve(
             self,
-            rag_query: RAGQuery,
+            rag_query: RAGQuery | str,
             top_k: Optional[int] = None,
     ) -> List[RetrievedPassage]:
         """
@@ -214,6 +214,10 @@ class FinAgentVectorStore:
         recency, optionally reranked, and returned as RetrievedPassage
         objects ready to drop into FinAgentState.
         """
+        if isinstance(rag_query, str):
+            # The public KB debug endpoint has no asset scope.  Preserve the
+            # structured internal contract while keeping that endpoint useful.
+            rag_query = RAGQuery(semantic_query=rag_query, keyword_query=rag_query)
         retrieval_start = time.perf_counter()
         top_k = top_k or config.FINAL_TOP_K
 
@@ -225,22 +229,7 @@ class FinAgentVectorStore:
             logger.warning("[vector_store.retrieve] Index is empty (not initialized)")
             return []
 
-        asset_filter = self._make_asset_filter(rag_query.asset_aliases)
-
-        """ OLD LOGIC
-        # dense_hits = self._faiss_store.similarity_search_with_score(query, k=config.DENSE_TOP_K)
-        # Important change in function to get cosine scores (this is giving squared distance)
-        dense_hits = self._faiss_store.similarity_search_with_relevance_scores(query, k=config.DENSE_TOP_K)
-        # Writing score in cosine
-        dense_hits = list(map(lambda t: (t[0], 1 - t[1] / 2), dense_hits))
-        logger.info(
-            f"[vector_store.retrieve] FAISS returned {len(dense_hits)} candidates "
-            f"(k={config.DENSE_TOP_K}, distance_strategy={self._distance_strategy})"
-        )
-
-        sparse_hits = self._bm25_search_with_score(query, k=config.SPARSE_TOP_K)
-        logger.info(f"[vector_store.retrieve] BM25 returned {len(sparse_hits)} candidates (k={config.SPARSE_TOP_K})")
-        """
+        asset_filter = self._make_asset_filter(rag_query.asset)
 
         # Overfetch when a filter is active so post-filter recall doesn't starve —
         # same reasoning as the retrieval_agent.py OVERFETCH_FACTOR, applied here
@@ -252,6 +241,10 @@ class FinAgentVectorStore:
         dense_hits = self._faiss_store.similarity_search_with_relevance_scores(
             rag_query.semantic_query, k=dense_fetch_k, filter=asset_filter
         )
+        # # LangChain's relevance API has already applied the FAISS distance
+        # # strategy's documented conversion.  Applying 1 - score / 2 here a
+        # # second time used to compress every result into 0.5..1.0.
+        # dense_hits = [(doc, max(0.0, min(1.0, float(score)))) for doc, score in dense_hits]
         dense_hits = list(map(lambda t: (t[0], 1 - t[1] / 2), dense_hits))
         dense_hits = dense_hits[: config.DENSE_TOP_K]
         logger.info(f"[vector_store.retrieve] FAISS returned {len(dense_hits)} can`didates")
@@ -325,21 +318,20 @@ class FinAgentVectorStore:
         return [(doc, float(score)) for doc, score in scored[:k]]
 
     @staticmethod
-    def _make_asset_filter(aliases: List[str]):
-        """Returns a metadata predicate for LangChain FAISS's `filter` param and
-        for _bm25_search_with_score, or None if there's no asset scope to enforce.
-        LangChain's FAISS.similarity_search_with_score accepts filter as a callable
-        taking metadata -> bool as of langchain_community >=0.0.20-ish — confirm
-        against your installed version; if it only accepts an exact-match dict on
-        yours, swap this for filtering dense_hits post-hoc instead, same pattern
-        as the BM25 branch above."""
-        if not aliases:
+    def _make_asset_filter(asset: Optional[str]):
+        """Return an exact canonical-asset predicate.
+
+        Chunks are tagged at ingestion with ``metadata['asset']``.  Sector and
+        genuinely multi-company documents use ``MULTI_ASSET`` and are excluded
+        from company-scoped retrieval unless a future explicit sector query opts
+        in; merely mentioning a competitor can never pass this filter.
+        """
+        if not asset:
             return None
-        aliases_upper = [a.upper() for a in aliases]
+        canonical = _canonical_asset(asset)
 
         def _filter(metadata: dict) -> bool:
-            haystack = f"{metadata.get('doc_name', '')} {metadata.get('section', '')}".upper()
-            return any(alias in haystack for alias in aliases_upper)
+            return metadata.get("asset") == canonical
 
         return _filter
 
@@ -443,18 +435,14 @@ class FinAgentVectorStore:
         page = metadata.get("page")
         section_reference = f"{section} (p.{page})" if page else section
 
-        # NOTE — this is a known stopgap: RetrievedPassage currently exposes only
-        # one `similarity_score` slot, so this line necessarily collapses five
-        # tracked scores into one number (sigmoid rerank confidence when reranking
-        # ran, else the recency-weighted RRF score — never the two conflated with
-        # each other, at least). All five components are still logged separately
-        # above via _log_candidates, they just don't survive past this function
-        # yet. Core/state.py's RetrievedPassage definition has to add
-        # dense_score / sparse_score / rrf_score / recency_weighted_score /
-        # rerank_logit / rerank_confidence / is_low_confidence as real fields.
-
-        final_score = bundle.dense_score if bundle.dense_score is not None else bundle.sparse_score * 0.8
-        # final_score = bundle.rerank_confidence if bundle.rerank_confidence is not None else bundle.recency_weighted_score
+        # Reranking publishes its calibrated sigmoid confidence.  Without a
+        # reranker we expose a single bounded, monotonic transform of the RRF
+        # fusion score; raw BM25 is deliberately never a public similarity.
+        final_score = (
+            bundle.rerank_confidence
+            if bundle.rerank_confidence is not None
+            else _bounded_fusion_score(bundle.recency_weighted_score or 0.0)
+        )
         if bundle.is_low_confidence:
             section_reference = f"{section_reference} [LOW CONFIDENCE]"
 
@@ -465,12 +453,33 @@ class FinAgentVectorStore:
             section_reference=section_reference,
             similarity_score=round(float(final_score), 4),
             retrieved_at=datetime.now(timezone.utc),
+            source_type="kb_retrieved",
+            grounded=True,
         )
 
 
 def _document_key(doc: Document) -> str:
     """Stable identity for a chunk across the dense and sparse result lists."""
     return f"{doc.metadata.get('doc_name')}::{doc.metadata.get('page')}::{hash(doc.page_content)}"
+
+
+def _canonical_asset(asset: str) -> str:
+    """Map a user-facing ticker/name to the canonical ingestion identifier."""
+    normalized = " ".join(asset.upper().split())
+    for ticker, aliases in config.ASSET_ALIASES.items():
+        if normalized == ticker or normalized in {" ".join(a.upper().split()) for a in aliases}:
+            return ticker
+    return normalized
+
+
+def _bounded_fusion_score(score: float) -> float:
+    """Bounded, documented mapping for rank-fusion scores.
+
+    RRF scores are positive but not probabilities. ``1-exp(-s*(RRF_K+1))``
+    is monotonic, maps zero to zero, and calibrates a top single rank
+    contribution near 0.63 without exposing an unbounded BM25 value.
+    """
+    return max(0.0, min(1.0, 1.0 - math.exp(-max(0.0, score) * (config.RRF_K + 1))))
 
 
 # Module-level singleton, mirroring core/graph.py's get_compiled_graph() pattern

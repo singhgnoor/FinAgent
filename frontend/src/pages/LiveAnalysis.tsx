@@ -42,28 +42,6 @@ const newsSchema = z.object({
 type PriceTickForm = z.infer<typeof priceTickSchema>
 type NewsForm = z.infer<typeof newsSchema>
 
-function mapResponse(res: any): PipelineResponse {
-  const passages = (res.retrieved_passages || []).map((p: any) => ({
-    content: p.text,
-    source: p.source_document,
-    relevance_score: p.similarity_score,
-  }))
-  return {
-    status: res.success ? "ok" : "error",
-    state: {
-      status: res.success ? "ok" : "error",
-      normalized_event: res.normalized_event,
-      retrieved_passages: passages,
-      hypothesis: res.hypothesis,
-      decision: res.decision,
-      trace: res.trace_log,
-      error: res.errors?.[0],
-      timing: { total_ms: res.elapsed_ms },
-    },
-    decision_id: res.signal_id,
-  }
-}
-
 export default function LiveAnalysis() {
   const [tab, setTab] = useState<"price" | "news">("price")
   const [result, setResult] = useState<PipelineResponse | null>(null)
@@ -77,7 +55,7 @@ export default function LiveAnalysis() {
   async function onPriceTick(data: PriceTickForm) {
     try {
       const res = await priceMutation.mutateAsync(data)
-      setResult(mapResponse(res))
+      setResult(res)
       toast({ title: "Analysis complete", variant: "default" })
     } catch (e: any) {
       toast({ title: "Analysis failed", description: e.message, variant: "destructive" })
@@ -87,7 +65,7 @@ export default function LiveAnalysis() {
   async function onNews(data: NewsForm) {
     try {
       const res = await newsMutation.mutateAsync(data)
-      setResult(mapResponse(res))
+      setResult(res)
       toast({ title: "Analysis complete", variant: "default" })
     } catch (e: any) {
       toast({ title: "Analysis failed", description: e.message, variant: "destructive" })
@@ -95,10 +73,10 @@ export default function LiveAnalysis() {
   }
 
   const isLoading = priceMutation.isPending || newsMutation.isPending
-  const decision = result?.state?.decision
-  const hypothesis = result?.state?.hypothesis
-  const trace = result?.state?.trace
-  const passages = result?.state?.retrieved_passages
+  const decision = result?.decision
+  const hypothesis = result?.hypothesis
+  const trace = result?.trace_log
+  const passages = result?.retrieved_passages
 
   return (
     <div>
@@ -221,7 +199,7 @@ export default function LiveAnalysis() {
                         >
                           {hypothesis.classification}
                         </Badge>
-                        <p className="text-sm text-muted-foreground">{hypothesis.reasoning}</p>
+                        <p className="text-sm text-muted-foreground">{hypothesis.rationale}</p>
                       </div>
                     ) : (
                       <p className="text-sm text-muted-foreground">No hypothesis generated</p>
@@ -246,13 +224,13 @@ export default function LiveAnalysis() {
                           </Badge>
                           <StatusBadge status={decision.confidence_level} />
                         </div>
-                        <p className="text-sm">{decision.commentary}</p>
+                        <p className="text-sm">{decision.llm_commentary}</p>
                         <div className="flex justify-center py-2">
                           <ConfidenceGauge score={decision.confidence_score} size="sm" />
                         </div>
-                        {decision.alert && (
+                        {decision.alert_triggered && (
                           <div className="rounded-md bg-amber-500/10 border border-amber-500/30 p-2 text-xs text-amber-500">
-                            Alert: {decision.alert_reason}
+                            Alert: confidence exceeded the configured threshold.
                           </div>
                         )}
                         {decision.risk_flags.length > 0 && (
@@ -278,9 +256,9 @@ export default function LiveAnalysis() {
                         <div className="space-y-2">
                           {passages.map((p, i) => (
                             <div key={i} className="rounded-md border p-2 text-xs">
-                              <p className="text-muted-foreground line-clamp-2">{p.content}</p>
+                              <p className="text-muted-foreground line-clamp-2">{p.text}</p>
                               <p className="text-xs text-muted-foreground mt-1">
-                                Source: {p.source} | Score: {Math.round(p.relevance_score * 100)}%
+                                Source: {p.source_document} | Score: {Math.round(p.similarity_score * 100)}%
                               </p>
                             </div>
                           ))}
@@ -289,9 +267,9 @@ export default function LiveAnalysis() {
                     </>
                   )}
 
-                  {result.state.error && (
+                  {result.errors[0] && (
                     <div className="rounded-md bg-destructive/10 border border-destructive/30 p-3 text-sm text-destructive">
-                      Error: {result.state.error}
+                      Error: {result.errors[0]}
                     </div>
                   )}
                 </div>

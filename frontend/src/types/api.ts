@@ -29,12 +29,7 @@ export enum TimeHorizon {
   MEDIUM_TERM = 'medium_term',
 }
 
-export enum AgentName {
-  INGESTION = 'ingestion_agent',
-  RETRIEVAL = 'retrieval_agent',
-  ANALYSIS = 'analysis_agent',
-  DECISION = 'decision_agent',
-}
+export type AgentName = 'ingestion_agent' | 'retrieval_agent' | 'analysis_agent' | 'decision_agent'
 
 export interface PriceData {
   open: number
@@ -68,37 +63,54 @@ export interface RawSignal {
 
 export interface NormalizedEvent {
   event_id: string
-  asset: string
-  signal_type: SignalType
-  normalized_features: Record<string, number>
-  raw_text?: string
+  event_type: SignalType
+  asset?: string
+  source: string
+  ingested_at: string
+  normalized_text: string
   timestamp: string
+  price_data?: PriceData
+  text_data?: TextData
+  document_data?: DocumentData
 }
 
 export interface RetrievedPassage {
-  content: string
-  source: string
-  relevance_score: number
+  passage_id: string
+  text: string
+  source_document: string
+  section_reference?: string
+  similarity_score: number
+  retrieved_at: string
+  source_type: 'kb_retrieved' | 'fallback_generic'
+  grounded: boolean
 }
 
 export interface Hypothesis {
+  hypothesis_id: string
+  asset: string
   classification: Classification
-  confidence: number
-  reasoning: string
+  rationale: string
+  statement: string
   supporting_evidence: string[]
+  confidence_score: number
+  grounding_passage_ids: string[]
+  created_at: string
+  grounded: boolean
 }
 
 export interface DecisionArtefact {
+  artefact_id: string
+  asset: string
   action: Action
-  confidence_level: ConfidenceLevel
   confidence_score: number
-  risk_level: string
-  time_horizon: TimeHorizon
-  reasoning: string
-  commentary: string
-  alert: boolean
-  alert_reason?: string
+  confidence_level: ConfidenceLevel
+  evidence_bullets: string[]
   risk_flags: string[]
+  llm_commentary?: string
+  created_at: string
+  alert_triggered: boolean
+  source_hypothesis_id?: string
+  source_hypothesis_ids: string[]
 }
 
 export interface TraceEvent {
@@ -123,9 +135,17 @@ export interface FinAgentState {
 }
 
 export interface PipelineResponse {
-  status: string
-  state: FinAgentState
-  decision_id?: string
+  success: boolean
+  signal_id: string
+  normalized_event?: NormalizedEvent
+  retrieved_passages: RetrievedPassage[]
+  hypothesis?: Hypothesis
+  decision?: DecisionArtefact
+  trace_log: TraceEvent[]
+  errors: string[]
+  elapsed_ms: number
+  chunks_indexed: number
+  embedding_completed: boolean
 }
 
 export interface PriceTickRequest {
@@ -171,22 +191,19 @@ export interface SystemHealth {
 }
 
 export interface DecisionHistoryEntry {
-  decision_id: string
-  timestamp: string
+  artefact_id: string
   asset: string
-  signal_type: SignalType
   action: Action
-  confidence: number
+  confidence_score: number
   confidence_level: ConfidenceLevel
-  risk_level: string
-  time_horizon: TimeHorizon
-  alert: boolean
-  alert_reason?: string
-  reasoning: string
+  evidence_bullets: string[]
   risk_flags: string[]
-  evidence: RetrievedPassage[]
-  trace: TraceEvent[]
-  commentary: string
+  llm_commentary?: string
+  created_at: string
+  alert_triggered: boolean
+  trace_log: TraceEvent[]
+  errors: string[]
+  normalized_event?: NormalizedEvent
 }
 
 export interface PaginatedResponse<T> {

@@ -109,20 +109,46 @@ def _get_llm_advice_safe(hypothesis) -> Tuple[Optional[_DecisionAdvice], str, Op
         return None, "fallback", str(e)
 
 
-def _action_from_classification(classification: Classification) -> Action:
-    return {
-        Classification.BULLISH: Action.BUY,
-        Classification.BEARISH: Action.SELL,
-        Classification.NEUTRAL: Action.WATCH,
-    }[classification]
+def _action_from_hypotheses(hypotheses: List) -> Action:
+    """Choose a reachable action from aggregate direction and conviction.
+
+    HOLD is deliberate: neutral/mixed evidence at usable confidence means keep
+    the existing position rather than treating uncertainty as WATCH.  WATCH is
+    reserved for low-conviction directional signals needing more confirmation.
+    """
+    classifications = {h.classification for h in hypotheses}
+    confidence = sum(h.confidence_score for h in hypotheses) / len(hypotheses)
+    mixed_direction = (
+        Classification.BULLISH in classifications and Classification.BEARISH in classifications
+    )
+    if mixed_direction or classifications == {Classification.NEUTRAL}:
+        return Action.HOLD if confidence >= 40 else Action.WATCH
+    direction = next(iter(classifications))
+    if confidence < 60:
+        return Action.WATCH
+    return Action.BUY if direction == Classification.BULLISH else Action.SELL
 
 
 def _synthesize_artefact(state: FinAgentState, advice: Optional[_DecisionAdvice]) -> DecisionArtefact:
-    hypothesis = state["hypothesis"]
+    primary = state["hypothesis"]
+    hypotheses = state.get("hypotheses") or [primary]
+    hypotheses = [h for h in hypotheses if h.asset == primary.asset] or [primary]
     threshold = state.get("alert_threshold", 70)
 
-    action = _action_from_classification(hypothesis.classification)
-    confidence_level = confidence_to_level(hypothesis.confidence_score)
+    classifications = {h.classification for h in hypotheses}
+    contradictory = Classification.BULLISH in classifications and Classification.BEARISH in classifications
+    confidence = round(sum(h.confidence_score for h in hypotheses) / len(hypotheses))
+    if contradictory:
+        confidence = max(0, confidence - 15)
+    if any(not h.grounded for h in hypotheses):
+        confidence = min(confidence, 39)
+    action = _action_from_hypotheses(hypotheses)
+    confidence_level = confidence_to_level(confidence)
+    evidence = []
+    for hypothesis in hypotheses:
+        for item in hypothesis.supporting_evidence:
+            if item not in evidence:
+                evidence.append(item)
 
     if advice is not None:
         risk_flags = advice.risk_flags or ["LLM returned no risk flags."]
@@ -130,19 +156,24 @@ def _synthesize_artefact(state: FinAgentState, advice: Optional[_DecisionAdvice]
     else:
         risk_flags = ["LLM risk advisory unavailable — deterministic artefact only."]
         llm_commentary = None
+    if contradictory:
+        risk_flags.append("Contradictory bullish and bearish hypotheses in the analysis window.")
+    if any(not h.grounded for h in hypotheses):
+        risk_flags.append("One or more hypotheses used non-KB fallback context; confidence capped.")
 
     return DecisionArtefact(
         artefact_id=str(uuid.uuid4()),
-        asset=hypothesis.asset,
+        asset=primary.asset,
         action=action,
-        confidence_score=hypothesis.confidence_score,
+        confidence_score=confidence,
         confidence_level=confidence_level,
-        evidence_bullets=hypothesis.supporting_evidence[:3] or ["No evidence available."],
+        evidence_bullets=evidence[:3] or ["No evidence available."],
         risk_flags=risk_flags,
         llm_commentary=llm_commentary,
         created_at=datetime.now(timezone.utc),
-        alert_triggered=hypothesis.confidence_score > threshold,
-        source_hypothesis_id=hypothesis.hypothesis_id,
+        alert_triggered=confidence > threshold,
+        source_hypothesis_id=primary.hypothesis_id,
+        source_hypothesis_ids=[h.hypothesis_id for h in hypotheses],
     )
 
 
@@ -175,7 +206,7 @@ def decision_node(state: FinAgentState) -> dict:
     advice, advice_status, advice_error = _get_llm_advice_safe(hypothesis)
     
     # Log deterministic rule result
-    deterministic_action = _action_from_classification(hypothesis.classification)
+    deterministic_action = _action_from_hypotheses(state.get("hypotheses") or [hypothesis])
     logger.info(
         f"[decision] Deterministic rule: classification={hypothesis.classification.value} "
         f"-> action={deterministic_action.value}"

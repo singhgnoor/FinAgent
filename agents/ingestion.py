@@ -12,6 +12,7 @@ import json
 import os
 import uuid
 import time
+import math
 from datetime import datetime, timezone
 from typing import Dict, List, Any
 
@@ -28,6 +29,7 @@ from core.state import (
     new_trace_event,
 )
 from core.log import get_logger
+from core.json_store import update_json_object
 
 logger = get_logger(__name__)
 
@@ -47,12 +49,22 @@ def _load_price_history() -> Dict[str, List[float]]:
 
 def _save_price_history(history: Dict[str, List[float]]):
     """Save price history cache to disk."""
-    try:
-        os.makedirs(config.DATA_DIR, exist_ok=True)
-        with open(PRICE_HISTORY_FILE, "w") as f:
-            json.dump(history, f)
-    except Exception:
-        pass
+    os.makedirs(config.DATA_DIR, exist_ok=True)
+    # Failure must reach the caller: silently losing history corrupts SMA/RSI.
+    update_json_object(PRICE_HISTORY_FILE, lambda target: (target.clear(), target.update(history)))
+
+
+def _append_price_history(asset: str, close: float) -> List[float]:
+    """Append and cap one asset's history inside the same file lock."""
+    result: List[float] = []
+    def _append(history: Dict[str, Any]) -> None:
+        nonlocal result
+        values = list(history.get(asset, []))
+        values.append(close)
+        result = values[-100:]
+        history[asset] = result
+    update_json_object(PRICE_HISTORY_FILE, _append)
+    return result
 
 
 def _calculate_sma(prices: List[float], period: int = 20) -> float:
@@ -119,7 +131,7 @@ def _extract_ticker_from_text(text: str) -> str:
 def _normalize_raw_signal(raw: RawSignal) -> NormalizedEvent:
     """Turn a RawSignal into a unified NormalizedEvent with calculated metrics."""
     now = datetime.now(timezone.utc)
-    asset = raw.payload.get("asset", "").strip() or None
+    asset = str(raw.payload.get("asset") or "").strip() or None
 
     price_data = text_data = document_data = None
     normalized_text = ""
@@ -127,26 +139,31 @@ def _normalize_raw_signal(raw: RawSignal) -> NormalizedEvent:
     if raw.signal_type == SignalType.PRICE_TICK:
         # Resolve target asset name (default to general sector/unknown if missing)
         resolved_asset = asset or "UNKNOWN"
-        close_val = float(raw.payload.get("close", 0.0))
+        required = ("open", "high", "low", "close", "volume")
+        missing = [field for field in required if field not in raw.payload]
+        if missing:
+            raise ValueError(f"price tick missing required fields: {', '.join(missing)}")
+        try:
+            values = {field: float(raw.payload[field]) for field in required}
+        except (TypeError, ValueError) as exc:
+            raise ValueError("price tick OHLCV fields must be numeric") from exc
+        if not all(math.isfinite(value) for value in values.values()):
+            raise ValueError("price tick OHLCV fields must be finite")
+        close_val = values["close"]
 
         # Update sliding price history window
-        history = _load_price_history()
-        ticker_history = history.get(resolved_asset, [])
-        ticker_history.append(close_val)
-        ticker_history = ticker_history[-100:]  # cap window history size
-        history[resolved_asset] = ticker_history
-        _save_price_history(history)
+        ticker_history = _append_price_history(resolved_asset, close_val)
 
         # Compute dynamic metrics
         rsi_val = _calculate_rsi(ticker_history, period=14)
         ma_val = _calculate_sma(ticker_history, period=20)
 
         price_data = PriceData(
-            open=float(raw.payload.get("open", 0.0)),
-            high=float(raw.payload.get("high", 0.0)),
-            low=float(raw.payload.get("low", 0.0)),
+            open=values["open"],
+            high=values["high"],
+            low=values["low"],
             close=close_val,
-            volume=float(raw.payload.get("volume", 0.0)),
+            volume=values["volume"],
             moving_average=ma_val,
             rsi=rsi_val,
         )
@@ -172,7 +189,12 @@ def _normalize_raw_signal(raw: RawSignal) -> NormalizedEvent:
             combined_search = " ".join([headline, summary or "", full_text or ""])
             asset = _extract_ticker_from_text(combined_search)
 
-        normalized_text = f"NEWS [{asset}]: {headline}"
+        # Include all available article material in the query/model context.
+        # Keep a bounded payload so a long article cannot dominate prompts.
+        normalized_text = (
+            f"NEWS [{asset}]: Headline: {headline}\n"
+            f"Summary: {summary or ''}\nFull text: {full_text or ''}"
+        )[:6000]
 
     elif raw.signal_type == SignalType.DOCUMENT:
         document_data = DocumentData(
@@ -193,13 +215,28 @@ def _normalize_raw_signal(raw: RawSignal) -> NormalizedEvent:
         event_type=raw.signal_type,
         asset=asset,
         source=raw.source,
-        timestamp=raw.received_at,
+        timestamp=_parse_source_timestamp(raw.payload.get("timestamp"), raw.received_at),
         ingested_at=now,
         normalized_text=normalized_text,
         price_data=price_data,
         text_data=text_data,
         document_data=document_data,
     )
+
+
+def _parse_source_timestamp(value: Any, fallback: datetime) -> datetime:
+    if value is None or value == "":
+        return fallback
+    if isinstance(value, datetime):
+        parsed = value
+    elif isinstance(value, str):
+        try:
+            parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+        except ValueError as exc:
+            raise ValueError(f"invalid source timestamp: {value!r}") from exc
+    else:
+        raise ValueError("source timestamp must be ISO-8601 text")
+    return parsed.replace(tzinfo=timezone.utc) if parsed.tzinfo is None else parsed.astimezone(timezone.utc)
 
 
 def ingestion_node(state: FinAgentState) -> dict:

@@ -1,5 +1,5 @@
 import api from './api'
-import type { KnowledgeBaseStatus } from '@/types/api'
+import type { KnowledgeBaseStatus, RetrievedPassage } from '@/types/api'
 
 export async function getStatus(): Promise<KnowledgeBaseStatus> {
   const { data } = await api.get<KnowledgeBaseStatus>('/knowledge-base/status')
@@ -25,7 +25,7 @@ export async function reindex(): Promise<{ message: string }> {
   return data
 }
 
-export async function search(query: string): Promise<{ results: Array<{ content: string; source: string; score: number }> }> {
-  const { data } = await api.get('/knowledge-base/search', { params: { query } })
+export async function search(query: string): Promise<{ results: RetrievedPassage[] }> {
+  const { data } = await api.get<{ results: RetrievedPassage[] }>('/knowledge-base/search', { params: { query } })
   return data
 }

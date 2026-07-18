@@ -43,7 +43,7 @@ export default function TraceViewer() {
   const [selectedId, setSelectedId] = useState<string>("")
   const { data: decision, isLoading } = useDecision(selectedId || undefined)
 
-  const trace = (decision as any)?.trace_log || (decision as any)?.trace || []
+  const trace: TraceEvent[] = decision?.trace_log || []
 
   return (
     <div>

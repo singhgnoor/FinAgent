@@ -101,6 +101,18 @@ class TestIngestionAndAnalysis(unittest.TestCase):
         self.assertEqual(event.event_type, SignalType.NEWS_TEXT)
         self.assertIsNotNone(event.text_data)
         self.assertEqual(event.text_data.headline, raw_signal.payload["headline"])
+        self.assertIn(raw_signal.payload["summary"], event.normalized_text)
+
+    def test_ingestion_rejects_missing_or_nonfinite_ohlcv(self):
+        bad = RawSignal(
+            raw_id="bad", signal_type=SignalType.PRICE_TICK, source="test",
+            payload={"asset": "INFY", "open": 1, "high": 2, "low": 0, "close": float("nan")},
+            received_at=datetime.now(timezone.utc),
+        )
+        state = create_initial_state()
+        state["raw_signal"] = bad
+        with self.assertRaises(ValueError):
+            ingestion_node(state)
 
     @patch("agents.analysis.get_llm")
     def test_analysis_agent_runs_with_price_data(self, mock_get_llm):
@@ -192,23 +204,26 @@ class TestIngestionAndAnalysis(unittest.TestCase):
         state["normalized_event"] = event
         
         query = _build_query(state)
-        self.assertEqual(query, "TCS financial performance, business outlook, valuation, and growth drivers")
+        self.assertEqual(query.asset, "TCS")
+        self.assertIn("TCS financial performance", query.semantic_query)
+        self.assertIn("RSI", query.keyword_query)
 
     def test_rerank_score_sigmoid_normalization(self):
         # Verify that cross-encoder logit scores are normalized to [0, 1] similarities
         from langchain_core.documents import Document
         from rag.vector_store import FinAgentVectorStore
         
-        store = FinAgentVectorStore()
+        store = object.__new__(FinAgentVectorStore)
         # Mock cross encoder
         mock_ce = MagicMock()
         mock_ce.score.return_value = [-4.4548, 2.197] # -4.4548 (should map to ~0.011), 2.197 (should map to ~0.90)
         store._cross_encoder = mock_ce
         
         # Call _rerank
+        from core.state import ScoreBundle
         docs = [
-            (Document(page_content="doc1"), -4.4548),
-            (Document(page_content="doc2"), 2.197)
+            (Document(page_content="doc1"), ScoreBundle()),
+            (Document(page_content="doc2"), ScoreBundle())
         ]
         
         reranked = store._rerank("query", docs)
@@ -216,10 +231,104 @@ class TestIngestionAndAnalysis(unittest.TestCase):
         self.assertEqual(len(reranked), 2)
         # doc2 should be ranked first because its score is higher
         self.assertEqual(reranked[0][0].page_content, "doc2")
-        self.assertAlmostEqual(reranked[0][1], 1.0 / (1.0 + 2.718281828459045 ** -2.197), places=3)
+        self.assertAlmostEqual(reranked[0][1].rerank_confidence, 1.0 / (1.0 + 2.718281828459045 ** -2.197), places=3)
         
         self.assertEqual(reranked[1][0].page_content, "doc1")
-        self.assertAlmostEqual(reranked[1][1], 1.0 / (1.0 + 2.718281828459045 ** 4.4548), places=3)
+        self.assertAlmostEqual(reranked[1][1].rerank_confidence, 1.0 / (1.0 + 2.718281828459045 ** 4.4548), places=3)
+
+    def test_retrieved_scores_are_bounded_and_rerank_wins(self):
+        from langchain_core.documents import Document
+        from core.state import ScoreBundle
+        from rag.vector_store import FinAgentVectorStore, _sigmoid
+        doc = Document(page_content="evidence", metadata={"doc_name": "a.pdf", "section": "S", "asset": "TCS"})
+        reranked = FinAgentVectorStore._to_retrieved_passage(doc, ScoreBundle(sparse_score=500.0, rerank_logit=2.0, rerank_confidence=_sigmoid(2.0)))
+        fallback = FinAgentVectorStore._to_retrieved_passage(doc, ScoreBundle(sparse_score=500.0, recency_weighted_score=0.01))
+        self.assertAlmostEqual(reranked.similarity_score, round(_sigmoid(2.0), 4))
+        self.assertTrue(0.0 <= reranked.similarity_score <= 1.0)
+        self.assertTrue(0.0 <= fallback.similarity_score <= 1.0)
+
+    def test_asset_filter_is_exact_metadata_match(self):
+        from rag.vector_store import FinAgentVectorStore
+        predicate = FinAgentVectorStore._make_asset_filter("TCS")
+        self.assertTrue(predicate({"asset": "TCS", "doc_name": "generic.pdf"}))
+        self.assertFalse(predicate({"asset": "INFY", "doc_name": "tcs-mentioned.pdf", "section": "TCS comparison"}))
+
+    @patch("agents.retrieval._vector_search", side_effect=RuntimeError("empty index"))
+    def test_retrieval_failure_is_explicitly_ungrounded(self, _search):
+        from agents.retrieval import retrieval_node
+        from core.state import NormalizedEvent
+        event = NormalizedEvent(
+            event_id="e", event_type=SignalType.NEWS_TEXT, asset="TCS", source="test",
+            timestamp=datetime.now(timezone.utc), ingested_at=datetime.now(timezone.utc), normalized_text="TCS outlook"
+        )
+        state = create_initial_state()
+        state["normalized_event"] = event
+        result = retrieval_node(state)
+        self.assertFalse(result["retrieval_grounded"])
+        self.assertTrue(all(not p.grounded for p in result["retrieved_passages"]))
+        self.assertTrue(result["errors"])
+
+    def test_decision_aggregates_hypotheses_and_all_actions_reachable(self):
+        from agents.decision import _action_from_hypotheses, _synthesize_artefact
+        from core.state import Hypothesis, Action
+        def hypothesis(kind, confidence, evidence):
+            return Hypothesis(
+                hypothesis_id=f"{kind.value}-{confidence}", asset="TCS", classification=kind,
+                rationale="r", statement="s", supporting_evidence=[evidence],
+                time_horizon=TimeHorizon.SHORT_TERM, confidence_score=confidence,
+                grounding_passage_ids=[], created_at=datetime.now(timezone.utc),
+            )
+        bullish = hypothesis(Classification.BULLISH, 80, "growth")
+        bearish = hypothesis(Classification.BEARISH, 75, "margin risk")
+        neutral = hypothesis(Classification.NEUTRAL, 55, "no catalyst")
+        self.assertEqual(_action_from_hypotheses([bullish]), Action.BUY)
+        self.assertEqual(_action_from_hypotheses([bearish]), Action.SELL)
+        self.assertEqual(_action_from_hypotheses([neutral]), Action.HOLD)
+        self.assertEqual(_action_from_hypotheses([hypothesis(Classification.BULLISH, 45, "weak")]), Action.WATCH)
+        state = create_initial_state()
+        state["hypothesis"] = bullish
+        state["hypotheses"] = [bullish, bearish]
+        artefact = _synthesize_artefact(state, None)
+        self.assertIn("growth", artefact.evidence_bullets)
+        self.assertIn("margin risk", artefact.evidence_bullets)
+        self.assertTrue(any("Contradictory" in flag for flag in artefact.risk_flags))
+        self.assertEqual(artefact.action, Action.HOLD)
+
+    @patch("agents.analysis._get_analysis_safe")
+    def test_fallback_evidence_cannot_inflate_decision_confidence(self, mock_analysis):
+        from agents.decision import _synthesize_artefact
+        from core.state import NormalizedEvent, RetrievedPassage
+        mock_analysis.return_value = (_AnalysisOutput(
+            classification=Classification.BULLISH, rationale="generic", statement="generic",
+            supporting_evidence=["generic"], time_horizon=TimeHorizon.SHORT_TERM, confidence_score=90,
+        ), "ok", None)
+        event = NormalizedEvent(
+            event_id="e", event_type=SignalType.NEWS_TEXT, asset="TCS", source="test",
+            timestamp=datetime.now(timezone.utc), ingested_at=datetime.now(timezone.utc), normalized_text="TCS news"
+        )
+        fallback = RetrievedPassage(
+            passage_id="p", text="generic", source_document="framework", similarity_score=.9,
+            retrieved_at=datetime.now(timezone.utc), source_type="fallback_generic", grounded=False,
+        )
+        state = create_initial_state()
+        state.update(normalized_event=event, retrieved_passages=[fallback], retrieval_grounded=False)
+        analyzed = analysis_node(state)
+        state.update(analyzed)
+        artefact = _synthesize_artefact(state, None)
+        self.assertLessEqual(analyzed["hypothesis"].confidence_score, 39)
+        self.assertLessEqual(artefact.confidence_score, 39)
+
+    def test_frontend_api_contract_uses_backend_canonical_field_names(self):
+        """Guard the dashboard/KB DTO contract without duplicating aliases."""
+        from pathlib import Path
+        from core.state import DecisionArtefact, RetrievedPassage
+        types = Path("frontend/src/types/api.ts").read_text(encoding="utf-8")
+        for field in ("artefact_id", "created_at", "confidence_score", "alert_triggered", "evidence_bullets"):
+            self.assertIn(field, DecisionArtefact.model_fields)
+            self.assertIn(field, types)
+        for field in ("text", "source_document", "similarity_score"):
+            self.assertIn(field, RetrievedPassage.model_fields)
+            self.assertIn(field, types)
 
     def test_yfinance_live_fetcher(self):
         # Mock yfinance to prevent actual network calls during testing

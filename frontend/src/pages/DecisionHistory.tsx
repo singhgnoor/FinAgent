@@ -55,7 +55,7 @@ export default function DecisionHistory() {
         `"${((d.llm_commentary || d.commentary || "")).replace(/"/g, '""')}"`,
       ].join(",")
     )
-    const blob = new Blob([headers.join(","), ...rows].join("\n"), { type: "text/csv" })
+    const blob = new Blob([[headers.join(","), ...rows].join("\n")], { type: "text/csv" })
     const url = URL.createObjectURL(blob)
     const a = document.createElement("a")
     a.href = url

@@ -279,8 +279,16 @@ def analysis_node(state: FinAgentState) -> dict:
             "errors": [f"analysis_agent: llm classification failed - {error}"],
         }
 
-    adjustment = _evidence_strength_adjustment(passages) if passages else 0
+    # Direct callers/tests that supply real passages but predate the explicit
+    # state flag remain grounded.  An explicit False from retrieval wins.
+    grounded = state.get("retrieval_grounded", all(p.grounded for p in passages)) and all(p.grounded for p in passages)
+    adjustment = _evidence_strength_adjustment(passages) if passages and grounded else 0
     final_confidence = _blend_confidence(output.confidence_score, adjustment)
+    # Fallback passages are explanatory generic text, never KB evidence.  A
+    # resulting hypothesis remains visible for observability but cannot become
+    # an actionable, supposedly grounded recommendation.
+    if not grounded:
+        final_confidence = min(39, max(0, final_confidence - 30))
     logger.debug(
         f"[analysis] Confidence adjustment: llm_score={output.confidence_score}, "
         f"adjustment={adjustment:+d}, final={final_confidence}"
@@ -298,6 +306,7 @@ def analysis_node(state: FinAgentState) -> dict:
         grounding_passage_ids=[p.passage_id for p in passages],
         created_at=datetime.now(timezone.utc),
         source_event_id=event.event_id,
+        grounded=grounded,
     )
 
     elapsed = time.perf_counter() - node_start
@@ -315,7 +324,8 @@ def analysis_node(state: FinAgentState) -> dict:
             f"final_confidence={final_confidence}"
         ),
         duration_ms=round(elapsed * 1000, 2),
-        status="ok",
+        status="ok" if grounded else "fallback",
+        error_message=None if grounded else "Hypothesis confidence capped: retrieval used non-KB fallback content.",
     )
     
     logger.info(
@@ -325,4 +335,7 @@ def analysis_node(state: FinAgentState) -> dict:
     )
     logger.debug(f"[analysis] Trace event: {trace.model_dump_json()}")
 
-    return {"hypothesis": hypothesis, "trace_log": [trace]}
+    result = {"hypothesis": hypothesis, "hypotheses": [hypothesis], "trace_log": [trace]}
+    if not grounded:
+        result["errors"] = ["analysis_agent: hypothesis is not KB-grounded; confidence capped."]
+    return result

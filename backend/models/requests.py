@@ -1,6 +1,8 @@
+import math
+from datetime import datetime
 from typing import Any, Dict, Literal, Optional
 
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 
 
 class SignalRequest(BaseModel):
@@ -16,6 +18,14 @@ class PriceTickRequest(BaseModel):
     low: float
     close: float
     volume: float
+    timestamp: Optional[datetime] = None
+
+    @field_validator("open", "high", "low", "close", "volume")
+    @classmethod
+    def finite_number(cls, value: float) -> float:
+        if not math.isfinite(value):
+            raise ValueError("must be a finite number")
+        return value
 
 
 class NewsRequest(BaseModel):

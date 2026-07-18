@@ -1,5 +1,5 @@
-import { useMutation } from '@tanstack/react-query'
-import { processSignal, processPriceTick, processNews } from '@/services/signals'
+import { useMutation, useQuery } from '@tanstack/react-query'
+import { processSignal, processPriceTick, processNews, uploadDocument, getRecentSignals } from '@/services/signals'
 import type { RawSignal, PriceTickRequest, NewsRequest } from '@/types/api'
 
 export function useSignalMutation() {
@@ -18,4 +18,12 @@ export function useNewsMutation() {
   return useMutation({
     mutationFn: (request: NewsRequest) => processNews(request),
   })
+}
+
+export function useDocumentMutation() {
+  return useMutation({ mutationFn: ({ file, docType, asset }: { file: File; docType: string; asset?: string }) => uploadDocument(file, docType, asset) })
+}
+
+export function useRecentSignals() {
+  return useQuery({ queryKey: ['recent-signals'], queryFn: () => getRecentSignals(), refetchInterval: 5000 })
 }

@@ -64,5 +64,27 @@
     "created_at": "2026-07-17T17:29:22.178078Z",
     "alert_triggered": true,
     "source_hypothesis_id": "5423d1ae-8701-42d3-b091-7435c4c3a21b"
+  },
+  {
+    "artefact_id": "c3d73343-369f-4ea0-a884-0444214aa858",
+    "asset": "TCS",
+    "action": "WATCH",
+    "confidence_score": 69,
+    "confidence_level": "Medium",
+    "evidence_bullets": [
+      "Current price (2211.0) is equal to the 20-period SMA (2211.00), indicating a neutral technical position.",
+      "RSI is 50.00, which is neither overbought nor oversold.",
+      "Daily range is narrow at 2210.0-2213.0, showing limited intraday volatility."
+    ],
+    "risk_flags": [
+      "The technical inputs are extremely compressed: price, 20-period SMA, and RSI are all effectively flat/neutral, so the setup may simply reflect stale data rather than a reliable range-bound signal.",
+      "The intraday range of 2210-2213 is very narrow, which can make the apparent 'balance' fragile; a small order-flow imbalance could still trigger a breakout or breakdown.",
+      "The supporting passages are mostly long-term business narrative and do not validate the absence of near-term catalysts such as results, guidance, block deals, or sector news.",
+      "A confidence score of 69/100 looks somewhat high relative to the thin evidence base; the hypothesis may be overconfident given the lack of catalyst and limited price discovery."
+    ],
+    "llm_commentary": "Treat this as a low-conviction neutrality read, not a strong forecast. Before acting, verify whether any market-moving event, index rebalancing, or sector-wide news is pending that could invalidate the range-bound assumption.",
+    "created_at": "2026-07-18T17:47:22.665543Z",
+    "alert_triggered": false,
+    "source_hypothesis_id": "ee7fd9f3-4449-41e2-b5e6-d776b7cb8e48"
   }
 ]

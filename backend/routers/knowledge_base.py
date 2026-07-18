@@ -33,13 +33,13 @@ class SearchResult(BaseModel):
 @router.get("/status", response_model=KBStatus)
 def kb_status():
     vstore = get_vector_store()
-    doc_count = len(vstore._documents) if not vstore.is_empty else 0
+    doc_count = len({d.metadata.get("doc_name") for d in vstore._documents}) if not vstore.is_empty else 0
     total_chunks = len(vstore._documents) if not vstore.is_empty else 0
     return KBStatus(
         total_documents=doc_count,
         total_chunks=total_chunks,
         embedding_model=config.EMBEDDING_MODEL_NAME,
-        index_ready=True,
+        index_ready=not vstore.is_empty,
         dimensions=config.EMBEDDING_DIMENSION,
     )
 
